@@ -433,10 +433,10 @@
   function r1Screen() {
     var v = S.view;
     if (!v.me.votes) return S.screen === 'browse' ? r1Browse(true) : r1Watch();
-    var s = S.screen || (v.mine.r1 ? 'done' : 'intro');
+    if (v.mine.r1) return r1Done(); // голос уже принят — переголосовать нельзя
+    var s = S.screen || 'intro';
     if (s === 'browse') return r1Browse(false);
     if (s === 'review') return r1Review();
-    if (s === 'done' && v.mine.r1) return r1Done();
     return r1Intro();
   }
 
@@ -492,7 +492,7 @@
     return '<section class="screen">' +
       '<span class="kicker">Раунд 1 · проверка</span>' +
       '<h1>Твой выбор</h1>' +
-      '<p class="lead">' + (n === 3 ? 'Всё готово, можно отправлять. Голос можно будет поменять, пока раунд открыт.' : 'Нужно ровно три формата. Отметь ещё ' + (3 - n) + '.') + '</p>' +
+      '<p class="lead">' + (n === 3 ? 'Всё готово, можно отправлять. Голос отправляется один раз — поменять его потом не получится.' : 'Нужно ровно три формата. Отметь ещё ' + (3 - n) + '.') + '</p>' +
       '<div class="slots">' + slots + '</div>' +
       '<details class="fold"' + (n < 3 ? ' open' : '') + '><summary>Поменять выбор</summary><div class="choices cols">' + list + '</div></details>' +
       '</section>' +
@@ -506,7 +506,7 @@
       '<div class="hero" style="padding-top:8px"><div class="done-badge">✓</div><h1>Голос принят</h1>' +
       '<div class="pick-list">' + v.mine.r1.map(function (id) { return '<span class="chip fin">' + esc(title(id)) + '</span>'; }).join('') + '</div>' +
       '<p class="lead">Когда Иван закроет первый раунд, здесь откроется финал. Страница обновляется сама.</p>' +
-      '<div class="row" style="justify-content:center"><button class="btn ghost" data-act="edit1">Изменить голос</button></div></div>' +
+      '<p class="note">Если в выборе ошибка — напиши Ивану, он сотрёт голос, и можно будет проголосовать заново.</p></div>' +
       '<div class="sp"></div>' + r1Results() + '</section>';
   }
 
@@ -524,10 +524,10 @@
     var v = S.view;
     if (!v.me.votes) return r2Watch('Команда выбирает главный формат и что играть в первом слоте.');
     if (!v.canVoteR2) return r2Watch('Во втором раунде голосуют те, кто голосовал в первом.');
-    var s = S.screen || (v.mine.r2 ? 'done' : 'intro');
+    if (v.mine.r2) return r2Done(); // голос уже принят — переголосовать нельзя
+    var s = S.screen || 'intro';
     if (s === 'main' || s === 'vote') return r2Main();
     if (s === 'slot') return S.sel2.main && !isLong(S.sel2.main) ? r2Slot() : r2Main();
-    if (s === 'done' && v.mine.r2) return r2Done();
     return r2Intro();
   }
 
@@ -560,7 +560,7 @@
         var f = F(id);
         return f ? choice('main', id, { format: f, title: esc(f.title) + (isLong(id) ? ' <span class="chip fin">на весь вечер</span>' : ''), sub: esc(f.tagline), chips: true, expandable: true, selected: main === id }) : '';
       }).join('') + '</div>' +
-      (long ? '<p class="note">' + q(main) + ' идёт на весь вечер, первый слот не нужен — можно сразу отправлять.</p>' : '') +
+      (long ? '<p class="note">' + q(main) + ' идёт на весь вечер, первый слот не нужен — можно сразу отправлять. Голос отправляется один раз — поменять его потом не получится.</p>' : '') +
       '</section>';
     var right = long
       ? '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>'
@@ -583,7 +583,7 @@
     var openOthers = others.some(function (f) { return f.id === sel.slot1; });
     return '<section class="screen">' +
       '<span class="kicker">Шаг 2 из 2 · по желанию</span><h1>Что играем в первом слоте?</h1>' +
-      '<p class="lead">До главного формата можно сыграть что-то ещё — или его же второй раз.</p>' +
+      '<p class="lead">До главного формата можно сыграть что-то ещё — или его же второй раз. Голос отправляется один раз — поменять его потом не получится.</p>' +
       r2Timeline() +
       '<div class="choices">' + opts.join('') + '</div>' +
       (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
@@ -600,7 +600,7 @@
     return '<section class="screen">' +
       '<div class="hero" style="padding-top:8px"><div class="done-badge">✓</div><h1>Голос принят</h1>' +
       '<p class="lead">Главный формат: ' + q(m.main) + '. Слот 1: ' + s1 + '.</p>' +
-      '<div class="row" style="justify-content:center"><button class="btn ghost" data-act="edit2">Изменить голос</button></div></div>' +
+      '<p class="note">Если в выборе ошибка — напиши Ивану, он сотрёт голос, и можно будет проголосовать заново.</p></div>' +
       '<div class="sp"></div>' + r2Results() + '</section>';
   }
 
@@ -834,8 +834,9 @@
 
       case 'pick1': togglePick(id); break;
       case 'pick1v': togglePick(el.getAttribute('data-val')); break;
-      case 'vote1': act('vote1', { picks: S.sel1 }, 'Голос принят').then(function (ok) { if (ok) go('done'); }); break;
-      case 'edit1': S.sel1 = (v.mine.r1 || []).slice(); go('review'); break;
+      case 'vote1':
+        if (!confirm('Отправить голос? Поменять его потом не получится.')) break;
+        act('vote1', { picks: S.sel1 }, 'Голос принят').then(function (ok) { if (ok) go('done'); }); break;
 
       case 'main': {
         var m = el.getAttribute('data-val');
@@ -850,13 +851,9 @@
         render(); break;
       }
       case 'vote2':
+        if (!confirm('Отправить голос? Поменять его потом не получится.')) break;
         act('vote2', isLong(S.sel2.main) ? { main: S.sel2.main } : { main: S.sel2.main, slot1: S.sel2.slot1, twice: S.sel2.twice }, 'Голос принят').then(function (ok) { if (ok) go('done'); });
         break;
-      case 'edit2': {
-        var r = v.mine.r2;
-        S.sel2 = { main: r.main, slot1: r.slot1 || '', twice: !!r.twice };
-        go('main'); break;
-      }
 
       /* управление */
       case 'a-open1':

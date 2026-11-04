@@ -228,9 +228,9 @@ function kvHandle(db, req, nowIso) {
       var uniq = picks.filter(function (id, i) { return picks.indexOf(id) === i; });
       if (uniq.length !== KV_PICKS_R1 || picks.length !== KV_PICKS_R1) throw kvErr('Нужно выбрать ровно три разных формата');
       uniq.forEach(function (id) { kvCheckFormat(db, id); });
-      var row = kvByName(db.r1, me.name);
-      if (row) { row.picks = uniq; row.time = nowIso; }
-      else db.r1.push({ time: nowIso, name: me.name, picks: uniq });
+      // Голос отдаётся один раз: после него видны результаты, и менять голос под них нельзя.
+      if (kvByName(db.r1, me.name)) throw kvErr('Голос в этом раунде уже принят, поменять его нельзя');
+      db.r1.push({ time: nowIso, name: me.name, picks: uniq });
       dirty.push('r1');
       break;
     }
@@ -250,9 +250,8 @@ function kvHandle(db, req, nowIso) {
         if (kvLongIds(db).indexOf(slot1) >= 0) throw kvErr('Этот формат идёт на весь вечер — в первый слот он не помещается');
         if (slot1 === main) { twice = true; slot1 = ''; }
       }
-      var r = kvByName(db.r2, me.name);
-      if (r) { r.time = nowIso; r.main = main; r.slot1 = slot1; r.twice = twice; }
-      else db.r2.push({ time: nowIso, name: me.name, main: main, slot1: slot1, twice: twice });
+      if (kvByName(db.r2, me.name)) throw kvErr('Голос в этом раунде уже принят, поменять его нельзя');
+      db.r2.push({ time: nowIso, name: me.name, main: main, slot1: slot1, twice: twice });
       dirty.push('r2');
       break;
     }
