@@ -337,7 +337,7 @@
     if (f1) items.push({ cls: 's1', k: f1.prepMax ? '' : 'Слот 1', label: f1.title, min: f1.min, max: f1.max });
     else if (opts.slot1Hint) {
       // Пустой первый слот: занимает свободное место, чтобы главный формат стоял справа, на своём месте.
-      var free = Math.max(0, show - c - fullMax(f2));
+      var free = Math.max(20, show - c - fullMax(f2));
       items.push({ cls: 'empty', k: 'Слот 1', label: opts.slot1Hint, min: 0, max: 0, space: free });
     }
     var k2 = f1 || opts.slot1Hint ? 'Слот 2' : 'Главный';
@@ -346,26 +346,22 @@
     else if (opts.compact) items.push({ cls: 'empty', k: 'Слот 2', label: 'выбери главный формат', min: 0, max: 0 });
     var lo = 0, hi = 0;
     items.forEach(function (i) { lo += i.min; hi += i.max; });
-    var scale = Math.max(show, hi) || 1;
-    // Полоса рисуется по верхней границе длительности, чтобы перебор был виден честно.
+    // Жёсткого лимита нет: полоса — это весь вечер, а внизу прогноз длительности.
+    var scale = 0;
+    items.forEach(function (i) { scale += i.space || i.max; });
+    scale = scale || 1;
     var segs = items.map(function (i) {
       return '<div class="seg ' + i.cls + '" style="width:' + ((i.space || i.max) / scale * 100).toFixed(2) + '%"></div>';
     }).join('');
-    var over = '';
-    if (hi > show) {
-      var left = (show / scale * 100).toFixed(2);
-      over = '<div class="tl-over' + (lo > show ? '' : ' maybe') + '" style="left:' + left + '%"></div>' +
-        '<div class="tl-limit" style="left:' + left + '%"><span>' + show + ' мин</span></div>';
-    }
-    var status = !f2 ? '' : hi <= show ? '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>' : '';
+    var hm = function (m) { var h = Math.floor(m / 60), r = m % 60; return h ? h + ' ч' + (r ? ' ' + r + ' мин' : '') : m + ' мин'; };
+    var status = f2 && hi >= 60 ? '<span class="pill neutral">≈ ' + (lo === hi ? hm(hi) : hm(lo) + ' – ' + hm(hi)) + '</span>' : '';
     var mm = function (i) { return i.min === i.max ? i.min + ' мин' : i.min + '–' + i.max + ' мин'; };
     return '<div class="tl' + (opts.compact ? ' compact' : '') + '">' +
-      '<div class="tl-bar' + (over ? ' has-limit' : '') + '">' + segs + over + '</div>' +
-      (opts.compact && !over ? '' : '<div class="tl-scale"><span>0</span><span>' + (over ? '<i class="tl-key"></i>за пределами шоу' : show + ' мин') + '</span></div>') +
+      '<div class="tl-bar">' + segs + '</div>' +
       '<ul class="tl-legend">' + items.map(function (i) {
         return '<li class="' + i.cls + '"><i class="dot ' + i.cls + '"></i><span class="k">' + i.k + '</span><span class="v">' + esc(i.label) + '</span><span class="m">' + (i.max ? mm(i) : '') + '</span></li>';
       }).join('') + '</ul>' +
-      '<div class="tl-total"><span>Итого ' + (lo === hi ? lo : lo + '–' + hi) + ' мин из ' + show + '</span>' + status + '</div>' +
+      '<div class="tl-total"><span>Прогноз: ' + (lo === hi ? lo : lo + '–' + hi) + ' мин</span>' + status + '</div>' +
       '</div>';
   }
 
@@ -756,10 +752,10 @@
 
     // Настройки
     html += '<div class="acard"><h2>Время</h2>' +
-      '<p class="hint">Нужно для таймлайна вечера.</p>' +
+      '<p class="hint">Конферанс входит в прогноз времени. Длина шоу — не лимит, а ориентир: по ней определяется, какой формат идёт «на весь вечер».</p>' +
       '<div class="fields">' +
       '<label>Конферанс, мин<input id="conf-min" type="number" min="0" max="60" value="' + a.settings.conferenceMin + '"></label>' +
-      '<label>Шоу, мин<input id="show-min" type="number" min="30" max="240" value="' + a.settings.showMin + '"></label>' +
+      '<label>Ориентир шоу, мин<input id="show-min" type="number" min="30" max="240" value="' + a.settings.showMin + '"></label>' +
       '<button class="btn ghost" data-act="a-settings">Сохранить</button></div></div>';
 
     return html + '</div></section>';

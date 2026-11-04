@@ -315,3 +315,4 @@ details.fold .choices { margin-top: 10px; }
 .seg.prep { opacity: .45; }
 .dot.prep { opacity: .45; }
 .tl-legend li .v small { color: var(--muted); font-weight: 600; }
+.pill.neutral { background: var(--surface-2); color: #6b4a2b; }
