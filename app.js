@@ -6,7 +6,7 @@
   var DEMO = params.has('demo');
   var OFF = !CFG.apiUrl && !DEMO; // бэкенд ещё не подключён
   var LS_CODE = DEMO ? 'kompot.demo.code' : 'kompot.code';
-  var LS_DB = 'kompot.demo.db4';
+  var LS_DB = 'kompot.demo.db5';
   var LS_VIEW = DEMO ? 'kompot.demo.view' : 'kompot.view';
   var POLL_MS = 7000;
 
@@ -48,7 +48,12 @@
   function isLong(id) { return S.view && (S.view.longIds || []).indexOf(id) >= 0; }
   function title(id) { var f = F(id); return f ? f.title : id; }
   function q(id) { return '«' + esc(title(id)) + '»'; }
-  function dur(f) { return f.min === f.max ? f.min + ' мин' : f.min + '–' + f.max + ' мин'; }
+  function range(a, b) { return a === b ? a + ' мин' : a + '–' + b + ' мин'; }
+  function dur(f) { return range(f.min, f.max); }
+  /** Интервью со зрителем перед форматом — отдельное время. */
+  function prep(f) { return f && f.prepMax ? range(f.prepMin, f.prepMax) : ''; }
+  function durFull(f) { return dur(f) + (f.prepMax ? ' + интервью ' + prep(f) : ''); }
+  function fullMax(f) { return f ? f.max + (f.prepMax || 0) : 0; }
   function plural(n, one, few, many) {
     var a = n % 10, b = n % 100;
     if (a === 1 && b !== 11) return one;
@@ -207,6 +212,7 @@
     return '<div class="chips">' + (extra || '') +
       (f.type ? '<span class="chip">' + esc(f.type) + '</span>' : '') +
       '<span class="chip">' + dur(f) + '</span>' +
+      (f.prepMax ? '<span class="chip">+ интервью ' + prep(f) + '</span>' : '') +
       (f.experience ? '<span class="chip exp">' + esc(f.experience) + '</span>' : '') +
       '</div>';
   }
@@ -230,7 +236,7 @@
       '<div class="meta">' +
       (f.audience ? '<div><p class="label">Что от зала</p>' + esc(f.audience) + '</div>' : '') +
       (f.props ? '<div><p class="label">Реквизит</p>' + esc(f.props) + '</div>' : '') +
-      '<div><p class="label">Длительность</p>' + dur(f) + '</div>' +
+      '<div><p class="label">Длительность</p>' + dur(f) + (f.prepMax ? ' + ' + prep(f) + ' на интервью перед началом' : '') + '</div>' +
       (f.experience ? '<div><p class="label">Опыт команды</p>' + esc(f.experience) + '</div>' : '') +
       '</div></div></article>';
   }
@@ -324,13 +330,19 @@
     var items = [];
     if (c > 0) items.push({ cls: 'conf', k: 'Начало', label: 'Конферанс', min: c, max: c });
     var f1 = slot1Id ? F(slot1Id) : null, f2 = mainId ? F(mainId) : null;
-    if (f1) items.push({ cls: 's1', k: 'Слот 1', label: f1.title, min: f1.min, max: f1.max });
+    var addPrep = function (f, cls, k) {
+      if (f && f.prepMax) items.push({ cls: cls + ' prep', k: k, label: 'Интервью со зрителем', min: f.prepMin, max: f.prepMax, minor: true });
+    };
+    addPrep(f1, 's1', 'Слот 1');
+    if (f1) items.push({ cls: 's1', k: f1.prepMax ? '' : 'Слот 1', label: f1.title, min: f1.min, max: f1.max });
     else if (opts.slot1Hint) {
       // Пустой первый слот: занимает свободное место, чтобы главный формат стоял справа, на своём месте.
-      var free = Math.max(0, show - c - (f2 ? f2.max : 0));
+      var free = Math.max(0, show - c - fullMax(f2));
       items.push({ cls: 'empty', k: 'Слот 1', label: opts.slot1Hint, min: 0, max: 0, space: free });
     }
-    if (f2) items.push({ cls: 's2', k: f1 || opts.slot1Hint ? 'Слот 2' : 'Главный', label: f2.title, min: f2.min, max: f2.max });
+    var k2 = f1 || opts.slot1Hint ? 'Слот 2' : 'Главный';
+    addPrep(f2, 's2', k2);
+    if (f2) items.push({ cls: 's2', k: f2.prepMax ? '' : k2, label: f2.title, min: f2.min, max: f2.max });
     else if (opts.compact) items.push({ cls: 'empty', k: 'Слот 2', label: 'выбери главный формат', min: 0, max: 0 });
     var lo = 0, hi = 0;
     items.forEach(function (i) { lo += i.min; hi += i.max; });
@@ -568,7 +580,7 @@
       choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, но разные вдохновения', selected: sel.twice, purple: true })
     ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
       var f = F(id);
-      return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
+      return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + durFull(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
     }));
     var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
     var openOthers = others.some(function (f) { return f.id === sel.slot1; });
@@ -578,7 +590,7 @@
       r2Timeline() +
       '<div class="choices">' + opts.join('') + '</div>' +
       (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
-        others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + dur(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
+        others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + durFull(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
         '</div></details>' : '') +
       '</section>' +
       bar('<button class="btn ghost" data-act="go" data-screen="main" aria-label="Назад">←</button>', '',

@@ -312,3 +312,6 @@ details.fold .choices { margin-top: 10px; }
   .tl.compact .tl-legend li { font-size: 14px; }
   .tl.compact .tl-legend .m { font-size: 13px; }
 }
+.seg.prep { opacity: .45; }
+.dot.prep { opacity: .45; }
+.tl-legend li .v small { color: var(--muted); font-weight: 600; }

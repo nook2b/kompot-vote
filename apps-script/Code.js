@@ -133,9 +133,9 @@ function kvCheckFormat(db, id, label) {
 function kvLongIds(db) {
   var st = db.state, act = kvActive(db);
   return act.filter(function (f) {
-    var others = act.filter(function (o) { return o.id !== f.id; }).map(function (o) { return o.min; });
+    var others = act.filter(function (o) { return o.id !== f.id; }).map(function (o) { return o.min + (o.prepMin || 0); });
     var shortest = others.length ? Math.min.apply(null, others) : 0;
-    return st.conferenceMin + f.min + shortest > st.showMin;
+    return st.conferenceMin + f.min + (f.prepMin || 0) + shortest > st.showMin;
   }).map(function (f) { return f.id; });
 }
 
@@ -442,6 +442,8 @@ function kvHandle(db, req, nowIso) {
         fields.forEach(function (k) { f[k] = String(src[k] || ''); });
         f.min = Number(src.min) || 0;
         f.max = Number(src.max) || f.min;
+        f.prepMin = Number(src.prepMin) || 0;
+        f.prepMax = Number(src.prepMax) || f.prepMin;
       });
       dirty.push('formats');
       break;
@@ -477,7 +479,8 @@ var SHEETS = {
 var FORMAT_COLS = [
   ['id', 'id'], ['title', 'Название'], ['tagline', 'Суть одной строкой'], ['type', 'Тип'],
   ['min', 'Мин, мин'], ['max', 'Макс, мин'], ['how', 'Как играется'], ['structure', 'Структура'],
-  ['audience', 'Что от зала'], ['props', 'Реквизит'], ['experience', 'Опыт команды'], ['active', 'Активен']
+  ['audience', 'Что от зала'], ['props', 'Реквизит'], ['experience', 'Опыт команды'], ['active', 'Активен'],
+  ['prepMin', 'Интервью перед, мин'], ['prepMax', 'Интервью перед, макс']
 ];
 var PEOPLE_COLS = ['Имя', 'Код', 'Роль', 'Личная ссылка'];
 var R1_COLS = ['Время', 'Имя', 'Формат 1', 'Формат 2', 'Формат 3'];
@@ -518,6 +521,8 @@ function loadDb_() {
     f.id = String(f.id).trim();
     f.min = Number(f.min) || 0;
     f.max = Number(f.max) || f.min;
+    f.prepMin = Number(f.prepMin) || 0;
+    f.prepMax = Number(f.prepMax) || f.prepMin;
     ['title', 'tagline', 'type', 'how', 'structure', 'audience', 'props', 'experience'].forEach(function (k) {
       f[k] = String(f[k] || '');
     });
