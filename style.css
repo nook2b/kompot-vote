@@ -204,6 +204,7 @@ details.fold .choices { margin-top: 10px; }
 .tl-bar { position: relative; display: flex; gap: 4px; height: 18px; }
 .tl-bar::before { content: ""; position: absolute; inset: 0; border-radius: 99px; background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, #fff 6px 12px); box-shadow: inset 0 0 0 1px var(--line); }
 .seg { position: relative; border-radius: 99px; height: 100%; }
+.seg.empty { background: rgba(255, 255, 255, .85); box-shadow: inset 0 0 0 2px #d9cfe3; border: 0; background-image: none; }
 .seg.conf, .dot.conf { background: #b9b2c7; }
 .seg.s1, .dot.s1 { background: var(--purple); }
 .seg.s2, .dot.s2 { background: var(--orange); }

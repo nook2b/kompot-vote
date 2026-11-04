@@ -7,6 +7,7 @@
   var OFF = !CFG.apiUrl && !DEMO; // бэкенд ещё не подключён
   var LS_CODE = DEMO ? 'kompot.demo.code' : 'kompot.code';
   var LS_DB = 'kompot.demo.db4';
+  var LS_VIEW = DEMO ? 'kompot.demo.view' : 'kompot.view';
   var POLL_MS = 7000;
 
   var DEMO_PEOPLE = [
@@ -128,6 +129,7 @@
   function setView(v) {
     S.view = v;
     S.json = JSON.stringify(v);
+    lsSet(LS_VIEW, S.json); // чтобы после обновления страницы сразу показать последний экран
     if (v.round !== S.round) {
       S.round = v.round;
       S.screen = null;
@@ -323,14 +325,19 @@
     if (c > 0) items.push({ cls: 'conf', k: 'Начало', label: 'Конферанс', min: c, max: c });
     var f1 = slot1Id ? F(slot1Id) : null, f2 = mainId ? F(mainId) : null;
     if (f1) items.push({ cls: 's1', k: 'Слот 1', label: f1.title, min: f1.min, max: f1.max });
-    if (f2) items.push({ cls: 's2', k: f1 ? 'Слот 2' : 'Главный', label: f2.title, min: f2.min, max: f2.max });
+    else if (opts.slot1Hint) {
+      // Пустой первый слот: занимает свободное место, чтобы главный формат стоял справа, на своём месте.
+      var free = Math.max(0, show - c - (f2 ? f2.max : 0));
+      items.push({ cls: 'empty', k: 'Слот 1', label: opts.slot1Hint, min: 0, max: 0, space: free });
+    }
+    if (f2) items.push({ cls: 's2', k: f1 || opts.slot1Hint ? 'Слот 2' : 'Главный', label: f2.title, min: f2.min, max: f2.max });
     else if (opts.compact) items.push({ cls: 'empty', k: 'Слот 2', label: 'выбери главный формат', min: 0, max: 0 });
     var lo = 0, hi = 0;
     items.forEach(function (i) { lo += i.min; hi += i.max; });
     var scale = Math.max(show, hi) || 1;
     // Полоса рисуется по верхней границе длительности, чтобы перебор был виден честно.
     var segs = items.map(function (i) {
-      return '<div class="seg ' + i.cls + '" style="width:' + (i.max / scale * 100).toFixed(2) + '%"></div>';
+      return '<div class="seg ' + i.cls + '" style="width:' + ((i.space || i.max) / scale * 100).toFixed(2) + '%"></div>';
     }).join('');
     var over = '';
     if (hi > show) {
@@ -374,20 +381,41 @@
       demo + '</div></section>';
   }
 
-  function login(code) {
+  function renderLoading(err) {
+    app.className = 'wrap';
+    app.innerHTML = '<section class="login"><div class="login-card">' +
+      '<div class="logo-tile"><img src="assets/logo-mark.jpg" alt=""></div>' +
+      '<h1>КОМПОТ</h1>' +
+      (err ? '<p class="err">' + esc(err) + '</p><button class="btn big wide" data-act="retry">Попробовать ещё раз</button>' +
+        '<p class="small" style="margin-top:14px"><button class="link" data-act="logout">Войти с другим кодом</button></p>'
+        : '<p class="sub">Загружаю…</p>') +
+      '</div></section>';
+  }
+
+  /** auto — вход по сохранённому коду: не показываем форму входа, пока ждём ответа. */
+  function login(code, auto) {
     code = String(code || '').trim();
     if (!code) return;
     S.code = code;
-    S.busy = true;
-    renderLogin();
+    S.busy = !(auto && S.view); // с сохранённым экраном можно пользоваться страницей, пока ждём
+    if (auto) { if (!S.view) renderLoading(); } else renderLogin();
     api('state').then(function (v) {
       lsSet(LS_CODE, code);
       S.busy = false;
       setView(v);
       render();
     }).catch(function (e) {
-      S.code = null;
       S.busy = false;
+      var badCode = /Код не найден/.test(e.message);
+      if (auto && !badCode) {
+        // Сеть мигнула: код не забываем, предлагаем повторить.
+        if (S.view) { toast('Нет связи, показываю последние данные', true); render(); }
+        else renderLoading('Не получилось загрузить: ' + e.message);
+        return;
+      }
+      S.code = null;
+      S.view = null;
+      if (badCode) { lsSet(LS_CODE, null); lsSet(LS_VIEW, null); }
       renderLogin(e.message);
     });
   }
@@ -489,7 +517,8 @@
     if (!v.me.votes) return r2Watch('Команда выбирает главный формат и что играть в первом слоте.');
     if (!v.canVoteR2) return r2Watch('Во втором раунде голосуют те, кто голосовал в первом.');
     var s = S.screen || (v.mine.r2 ? 'done' : 'intro');
-    if (s === 'vote') return r2Vote();
+    if (s === 'main' || s === 'vote') return r2Main();
+    if (s === 'slot') return S.sel2.main && !isLong(S.sel2.main) ? r2Slot() : r2Main();
     if (s === 'done' && v.mine.r2) return r2Done();
     return r2Intro();
   }
@@ -499,53 +528,61 @@
     return '<section class="screen hero">' +
       '<span class="kicker">Раунд 2 из 2 · финал</span>' +
       '<h1>Выбираем программу вечера</h1>' +
-      '<p class="lead">Выбери главный формат из финалистов и, по желанию, что сыграть в первом слоте. Таймлайн вечера будет собираться прямо на ходу.</p>' +
+      '<p class="lead">Выбери главный формат из финалистов и, по желанию, что сыграть в первом слоте. Сверху будет таймлайн — он соберётся прямо на ходу.</p>' +
       '<div class="pick-list">' + v.finalists.map(function (id) { return '<span class="chip fin">' + esc(title(id)) + '</span>'; }).join('') + '</div>' +
-      '<button class="btn big" data-act="go" data-screen="vote">Начать →</button>' +
+      '<button class="btn big" data-act="go" data-screen="main">Начать →</button>' +
       '</section>';
   }
 
-  /** Один экран: сверху живой таймлайн, ниже главный формат и первый слот. */
-  function r2Vote() {
-    var v = S.view, sel = S.sel2, main = sel.main, long = isLong(main);
+  /** Живой таймлайн сверху экранов второго раунда. */
+  function r2Timeline() {
+    var sel = S.sel2, main = sel.main, long = isLong(main);
     var slot1 = !main || long ? '' : sel.twice ? main : sel.slot1;
+    var hint = long ? '' : !slot1 ? (S.screen === 'slot' ? 'пусто — выбери ниже' : 'выберешь на следующем шаге') : '';
+    return '<div class="tl-sticky">' + timeline(slot1, main, { compact: true, slot1Hint: hint }) + '</div>';
+  }
 
+  function r2Main() {
+    var v = S.view, main = S.sel2.main, long = isLong(main);
     var html = '<section class="screen">' +
-      '<span class="kicker">Раунд 2 · финал</span><h1>Собери программу вечера</h1>' +
-      '<div class="tl-sticky">' + timeline(slot1, main, { compact: true }) + '</div>' +
-      '<h2 class="step-h"><span class="num">1</span>Главный формат</h2>' +
-      '<p class="hint-l">Займёт второй слот — основную часть вечера.</p>' +
+      '<span class="kicker">Шаг 1 из ' + (long ? 1 : 2) + '</span><h1>Главный формат</h1>' +
+      '<p class="lead">Он займёт второй слот — основную часть вечера.</p>' +
+      r2Timeline() +
       '<div class="choices">' + v.finalists.map(function (id) {
         var f = F(id);
         return f ? choice('main', id, { format: f, title: esc(f.title) + (isLong(id) ? ' <span class="chip fin">на весь вечер</span>' : ''), sub: esc(f.tagline), chips: true, expandable: true, selected: main === id }) : '';
-      }).join('') + '</div>';
-
-    html += '<h2 class="step-h"><span class="num">2</span>Первый слот <span class="muted small">по желанию</span></h2>';
-    if (!main) {
-      html += '<p class="hint-l">Сначала выбери главный формат.</p>';
-    } else if (long) {
-      html += '<p class="hint-l">' + q(main) + ' идёт на весь вечер — первый слот не нужен.</p>';
-    } else {
-      var opts = [
-        choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
-        choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, на разные подсказки', selected: sel.twice, purple: true })
-      ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
-        var f = F(id);
-        return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
-      }));
-      var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
-      var openOthers = others.some(function (f) { return f.id === sel.slot1; });
-      html += '<p class="hint-l">До главного формата можно сыграть что-то ещё — или тот же формат второй раз.</p>' +
-        '<div class="choices">' + opts.join('') + '</div>' +
-        (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
-          others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + dur(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
-          '</div></details>' : '');
-    }
-    html += '</section>';
-
+      }).join('') + '</div>' +
+      (long ? '<p class="note">' + q(main) + ' идёт на весь вечер, первый слот не нужен — можно сразу отправлять.</p>' : '') +
+      '</section>';
+    var right = long
+      ? '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>'
+      : '<button class="btn" data-act="go" data-screen="slot"' + (main ? '' : ' disabled') + '>Дальше →</button>';
     return html + bar('<button class="btn ghost" data-act="go" data-screen="intro" aria-label="Назад">←</button>',
-      main ? 'Голос можно поменять, пока раунд открыт' : 'Выбери <b>главный формат</b>',
-      '<button class="btn" data-act="vote2"' + (!main || S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
+      main ? '' : 'Выбери <b>главный формат</b>', right);
+  }
+
+  function r2Slot() {
+    var v = S.view, sel = S.sel2, main = sel.main;
+    var opts = [
+      choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
+      choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, на разные подсказки', selected: sel.twice, purple: true })
+    ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
+      var f = F(id);
+      return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
+    }));
+    var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
+    var openOthers = others.some(function (f) { return f.id === sel.slot1; });
+    return '<section class="screen">' +
+      '<span class="kicker">Шаг 2 из 2 · по желанию</span><h1>Что играем в первом слоте?</h1>' +
+      '<p class="lead">До главного формата можно сыграть что-то ещё — или его же второй раз.</p>' +
+      r2Timeline() +
+      '<div class="choices">' + opts.join('') + '</div>' +
+      (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
+        others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + dur(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
+        '</div></details>' : '') +
+      '</section>' +
+      bar('<button class="btn ghost" data-act="go" data-screen="main" aria-label="Назад">←</button>', '',
+        '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
   }
 
   function r2Done() {
@@ -795,8 +832,10 @@
     var a = el.getAttribute('data-act'), id = el.getAttribute('data-id'), v = S.view, name = el.getAttribute('data-name');
     switch (a) {
       case 'democode': login(el.getAttribute('data-code')); break;
+      case 'retry': login(S.code || lsGet(LS_CODE), true); break;
       case 'logout':
         lsSet(LS_CODE, null);
+        lsSet(LS_VIEW, null);
         S.code = null; S.view = null; S.json = ''; S.round = 0; S.page = 'vote'; S.screen = null;
         S.sel1 = []; S.sel2 = { main: '', slot1: '', twice: false }; S.adm = { round: 0, touched: false, fin: {}, main: '', slot1: null };
         render(); break;
@@ -827,7 +866,7 @@
       case 'edit2': {
         var r = v.mine.r2;
         S.sel2 = { main: r.main, slot1: r.slot1 || '', twice: !!r.twice };
-        go('vote'); break;
+        go('main'); break;
       }
 
       /* управление */
@@ -924,6 +963,11 @@
   }
   var saved = urlCode || lsGet(LS_CODE);
   if (OFF) renderOff();
-  else if (saved) login(saved);
-  else renderLogin();
+  else if (saved) {
+    // Сразу показываем последний экран из памяти браузера, свежие данные подтянутся следом.
+    var cached = null;
+    if (!urlCode || urlCode === lsGet(LS_CODE)) { try { cached = JSON.parse(lsGet(LS_VIEW)); } catch (e) { cached = null; } }
+    if (cached && cached.me) { S.code = saved; setView(cached); render(); }
+    login(saved, true);
+  } else renderLogin();
 })();
