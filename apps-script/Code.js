@@ -6,8 +6,8 @@
  * логика голосования (функция kvHandle) общая, отличается только хранилище.
  *
  * Листы таблицы:
- *   Форматы    — список форматов (можно править прямо в таблице)
  *   Участники  — имя, код, роль (участник / гость / админ), личная ссылка
+ *   Форматы    — список форматов (можно править прямо в таблице)
  *   Раунд 1    — один ряд на участника: три формата
  *   Раунд 2    — один ряд на участника: главный формат, слот 1, «дважды»
  *   Настройки  — текущий раунд, финалисты, итог, длительности
@@ -17,11 +17,18 @@
 
 var KV_PICKS_R1 = 3;
 var KV_FINALISTS = 3;
+var KV_ROLES = ['участник', 'гость', 'админ', 'участник, админ'];
 
 function kvErr(message) {
   var e = new Error(message);
   e.kvUser = true;
   return e;
+}
+
+/** Роль из таблицы → права. «участник» голосует, «гость» смотрит, «админ» управляет. */
+function kvRole(role) {
+  var r = String(role || '').trim().toLowerCase();
+  return { admin: r.indexOf('админ') >= 0, votes: r === '' || r.indexOf('участ') >= 0 };
 }
 
 function kvFindParticipant(db, code) {
@@ -33,12 +40,21 @@ function kvFindParticipant(db, code) {
   return null;
 }
 
+function kvActive(db) {
+  return db.formats.filter(function (f) { return f.active !== false; });
+}
+
 function kvFormatIds(db) {
-  return db.formats.map(function (f) { return f.id; });
+  return kvActive(db).map(function (f) { return f.id; });
+}
+
+function kvHasFormat(db, id) {
+  for (var i = 0; i < db.formats.length; i++) if (db.formats[i].id === id) return true;
+  return false;
 }
 
 function kvVoters(db) {
-  return db.participants.filter(function (p) { return p.votes; });
+  return db.participants.filter(function (p) { return kvRole(p.role).votes; });
 }
 
 function kvByName(rows, name) {
@@ -46,10 +62,19 @@ function kvByName(rows, name) {
   return null;
 }
 
+function kvNewCode(db) {
+  var taken = {};
+  db.participants.forEach(function (p) { taken[String(p.code)] = true; });
+  for (;;) {
+    var c = String(10000 + Math.floor(Math.random() * 90000));
+    if (!taken[c]) return c;
+  }
+}
+
 /** Подсчёт раунда 1: сколько раз выбирали каждый формат. */
 function kvTallyR1(db) {
   var counts = {};
-  db.formats.forEach(function (f) { counts[f.id] = 0; });
+  kvActive(db).forEach(function (f) { counts[f.id] = 0; });
   db.r1.forEach(function (v) {
     v.picks.forEach(function (id) { if (id in counts) counts[id]++; });
   });
@@ -81,8 +106,8 @@ function kvTallyR2(db) {
 }
 
 /**
- * Берёт первые `n` мест. Если на границе ничья, возвращает
- * { sure: [...], tied: [...], need: k } — админ выбирает k из tied.
+ * Берёт первые `n` мест. Если на границе ничья, winners = null, а
+ * sure — точно проходят, tied — поделившие место, need — сколько из них взять.
  */
 function kvTop(counts, n, order) {
   var ids = Object.keys(counts).filter(function (id) { return counts[id] > 0; });
@@ -101,10 +126,16 @@ function kvCheckFormat(db, id, label) {
   if (kvFormatIds(db).indexOf(id) < 0) throw kvErr('Неизвестный формат' + (label ? ' (' + label + ')' : ''));
 }
 
+function kvLink(db, code) {
+  var u = String(db.state.siteUrl || '');
+  if (u && u.slice(-1) !== '/') u += '/';
+  return u + '?code=' + code;
+}
+
 function kvView(db, me) {
   var st = db.state;
-  var voters = kvVoters(db);
-  var voterNames = voters.map(function (p) { return p.name; });
+  var rights = kvRole(me.role);
+  var voterNames = kvVoters(db).map(function (p) { return p.name; });
   var r1Mine = kvByName(db.r1, me.name);
   var r2Mine = kvByName(db.r2, me.name);
   var r1Count = db.r1.filter(function (v) { return voterNames.indexOf(v.name) >= 0; }).length;
@@ -112,11 +143,11 @@ function kvView(db, me) {
 
   var view = {
     round: st.round,
-    me: { name: me.name, admin: !!me.admin, votes: !!me.votes },
-    formats: db.formats,
+    me: { name: me.name, role: me.role, admin: rights.admin, votes: rights.votes },
+    formats: kvActive(db),
     finalists: st.finalists,
     settings: { conferenceMin: st.conferenceMin, showMin: st.showMin },
-    counts: { total: voters.length, r1: r1Count, r2: r2Count, r2Eligible: r1Count },
+    counts: { total: voterNames.length, r1: r1Count, r2: r2Count, r2Eligible: r1Count },
     mine: {
       r1: r1Mine ? r1Mine.picks : null,
       r2: r2Mine ? { main: r2Mine.main, slot1: r2Mine.slot1, twice: r2Mine.twice } : null
@@ -125,49 +156,59 @@ function kvView(db, me) {
     final: st.round >= 3 ? { main: st.finalMain, slot1: st.finalSlot1 } : null
   };
 
-  // Результаты видны тем, кто уже проголосовал, и всем после закрытия раунда.
-  if (r1Mine || st.round > 1 || me.admin || !me.votes) view.r1 = kvTallyR1(db);
-  if (st.round >= 2 && (r2Mine || st.round > 2 || me.admin || !me.votes)) view.r2 = kvTallyR2(db);
+  // Результаты видны тем, кто уже проголосовал, гостям, админам и всем после закрытия раунда.
+  var watcher = rights.admin || !rights.votes;
+  if (r1Mine || st.round > 1 || watcher) view.r1 = kvTallyR1(db);
+  if (st.finalists.length && (r2Mine || st.round > 2 || watcher)) view.r2 = kvTallyR2(db);
 
-  if (me.admin) {
+  if (rights.admin) {
+    var t2 = kvTallyR2(db);
     view.admin = {
-      people: voters.map(function (p) {
-        return { name: p.name, r1: !!kvByName(db.r1, p.name), r2: !!kvByName(db.r2, p.name) };
-      })
+      people: db.participants.map(function (p) {
+        return {
+          name: p.name, code: p.code, role: p.role, link: kvLink(db, p.code),
+          votes: kvRole(p.role).votes,
+          r1: !!kvByName(db.r1, p.name), r2: !!kvByName(db.r2, p.name)
+        };
+      }),
+      allFormats: db.formats.map(function (f) { return { id: f.id, title: f.title, active: f.active !== false }; }),
+      proposal: kvTop(kvTallyR1(db), KV_FINALISTS, kvFormatIds(db)),
+      mainProposal: kvTop(t2.main, 1, st.finalists),
+      slot1Proposal: kvTop(t2.slot1, 1, kvFormatIds(db)),
+      settings: { conferenceMin: st.conferenceMin, showMin: st.showMin, siteUrl: st.siteUrl }
     };
-    var order = kvFormatIds(db);
-    if (st.round === 1) view.admin.proposal = kvTop(kvTallyR1(db), KV_FINALISTS, order);
-    if (st.round === 2) {
-      var t = kvTallyR2(db);
-      var m = kvTop(t.main, 1, st.finalists);
-      view.admin.proposal = m;
-      view.admin.slot1Proposal = kvTop(t.slot1, 1, order);
-    }
   }
   return view;
 }
 
 /**
  * Обрабатывает запрос. Меняет db на месте и возвращает
- * { result: ..., dirty: ['r1','r2','state'] }.
+ * { result: ..., dirty: ['r1','r2','state','participants','formats'] }.
  */
 function kvHandle(db, req, nowIso) {
   var action = req && req.action;
   if (action === 'ping') return { result: { ok: true } };
 
   var me = kvFindParticipant(db, req.code);
-  if (!me) throw kvErr('Код не найден. Проверь ссылку или спроси админа.');
+  if (!me) throw kvErr('Код не найден. Проверь ссылку или спроси Ивана.');
+  var rights = kvRole(me.role);
   var st = db.state;
   var dirty = [];
 
-  function needAdmin() { if (!me.admin) throw kvErr('Только для админа'); }
+  function needAdmin() { if (!rights.admin) throw kvErr('Только для админа'); }
+  function person(name) {
+    for (var i = 0; i < db.participants.length; i++) if (db.participants[i].name === name) return db.participants[i];
+    throw kvErr('Нет такого участника');
+  }
 
   switch (action) {
     case 'state':
       break;
 
+    /* ----- голосование ----- */
+
     case 'vote1': {
-      if (!me.votes) throw kvErr('Этот код не голосует');
+      if (!rights.votes) throw kvErr('Этот код не голосует');
       if (st.round !== 1) throw kvErr('Первый раунд уже закрыт');
       var picks = (req.picks || []).map(String);
       var uniq = picks.filter(function (id, i) { return picks.indexOf(id) === i; });
@@ -181,7 +222,7 @@ function kvHandle(db, req, nowIso) {
     }
 
     case 'vote2': {
-      if (!me.votes) throw kvErr('Этот код не голосует');
+      if (!rights.votes) throw kvErr('Этот код не голосует');
       if (st.round !== 2) throw kvErr(st.round < 2 ? 'Второй раунд ещё не начался' : 'Второй раунд уже закрыт');
       if (!kvByName(db.r1, me.name)) throw kvErr('Во втором раунде голосуют те, кто голосовал в первом');
       var main = String(req.main || '');
@@ -200,45 +241,41 @@ function kvHandle(db, req, nowIso) {
       break;
     }
 
-    case 'closeR1': {
+    /* ----- раунды ----- */
+
+    case 'openR1': {
       needAdmin();
-      if (st.round !== 1) throw kvErr('Сейчас не первый раунд');
-      var fin = req.finalists;
-      if (!fin) {
-        var top = kvTop(kvTallyR1(db), KV_FINALISTS, kvFormatIds(db));
-        if (!top.winners) return { result: { needChoice: true, proposal: top } };
-        fin = top.winners;
-      }
-      fin = fin.map(String).filter(function (id, i, a) { return a.indexOf(id) === i; });
+      st.round = 1;
+      st.finalMain = '';
+      st.finalSlot1 = '';
+      dirty.push('state');
+      break;
+    }
+
+    case 'openR2': {
+      needAdmin();
+      var fin = (req.finalists || st.finalists || []).map(String)
+        .filter(function (id, i, a) { return a.indexOf(id) === i; });
       if (fin.length < 2 || fin.length > 5) throw kvErr('Финалистов должно быть от 2 до 5');
       fin.forEach(function (id) { kvCheckFormat(db, id); });
       st.finalists = fin;
       st.round = 2;
+      st.finalMain = '';
+      st.finalSlot1 = '';
       // Голоса второго раунда за выбывшие форматы больше не имеют смысла.
+      var before = db.r2.length;
       db.r2 = db.r2.filter(function (v) { return fin.indexOf(v.main) >= 0; });
-      dirty.push('state', 'r2');
+      dirty.push('state');
+      if (db.r2.length !== before) dirty.push('r2');
       break;
     }
 
-    case 'closeR2': {
+    case 'finish': {
       needAdmin();
-      if (st.round !== 2) throw kvErr('Сейчас не второй раунд');
-      var t = kvTallyR2(db);
-      var fm = req.main;
-      if (!fm) {
-        var tm = kvTop(t.main, 1, st.finalists);
-        if (!tm.winners || !tm.winners.length) return { result: { needChoice: true, proposal: tm, what: 'main' } };
-        fm = tm.winners[0];
-      }
+      if (!st.finalists.length) throw kvErr('Сначала откройте второй раунд с финалистами');
+      var fm = String(req.main || '');
       if (st.finalists.indexOf(fm) < 0) throw kvErr('Главный формат должен быть из финалистов');
-      var fs;
-      if ('slot1' in req) {
-        fs = req.slot1 ? String(req.slot1) : '';
-      } else {
-        var ts = kvTop(t.slot1, 1, kvFormatIds(db));
-        if (!ts.winners) return { result: { needChoice: true, proposal: ts, what: 'slot1', main: fm } };
-        fs = ts.winners[0] || '';
-      }
+      var fs = req.slot1 ? String(req.slot1) : '';
       if (fs) kvCheckFormat(db, fs, 'слот 1');
       st.finalMain = fm;
       st.finalSlot1 = fs;
@@ -247,13 +284,15 @@ function kvHandle(db, req, nowIso) {
       break;
     }
 
-    case 'setRound': {
+    /* ----- голоса ----- */
+
+    case 'clearVotes': {
       needAdmin();
-      var to = Number(req.round);
-      if (!(to >= 1 && to < st.round)) throw kvErr('Можно только вернуться на раунд назад');
-      st.round = to;
-      if (to < 3) { st.finalMain = ''; st.finalSlot1 = ''; }
-      dirty.push('state');
+      var which = String(req.round || 'all');
+      var only = req.name ? String(req.name) : '';
+      var keep = function (v) { return only && v.name !== only; };
+      if (which === '1' || which === 'all') { db.r1 = db.r1.filter(keep); dirty.push('r1'); }
+      if (which === '2' || which === 'all') { db.r2 = db.r2.filter(keep); dirty.push('r2'); }
       break;
     }
 
@@ -266,6 +305,79 @@ function kvHandle(db, req, nowIso) {
       st.finalMain = '';
       st.finalSlot1 = '';
       dirty.push('r1', 'r2', 'state');
+      break;
+    }
+
+    /* ----- участники ----- */
+
+    case 'savePerson': {
+      needAdmin();
+      var name = String(req.name || '').trim();
+      var role = String(req.role || '').trim().toLowerCase();
+      if (!name) throw kvErr('Нужно имя');
+      if (KV_ROLES.indexOf(role) < 0) throw kvErr('Роль: участник, гость, админ или «участник, админ»');
+      var orig = req.orig ? String(req.orig) : '';
+      var clash = db.participants.some(function (p) { return p.name === name && p.name !== orig; });
+      if (clash) throw kvErr('Такое имя уже есть');
+      if (orig) {
+        var p = person(orig);
+        if (p === me && !kvRole(role).admin) throw kvErr('Нельзя снять админа с самого себя');
+        if (name !== orig) {
+          db.r1.forEach(function (v) { if (v.name === orig) v.name = name; });
+          db.r2.forEach(function (v) { if (v.name === orig) v.name = name; });
+          dirty.push('r1', 'r2');
+        }
+        p.name = name;
+        p.role = role;
+      } else {
+        var code = String(req.newCode || '').trim();
+        if (code) {
+          if (!/^\d{3,8}$/.test(code)) throw kvErr('Код — от 3 до 8 цифр');
+          if (db.participants.some(function (x) { return String(x.code) === code; })) throw kvErr('Такой код уже занят');
+        } else {
+          code = kvNewCode(db);
+        }
+        db.participants.push({ name: name, code: code, role: role });
+      }
+      dirty.push('participants');
+      break;
+    }
+
+    case 'reissue': {
+      needAdmin();
+      var pr = person(String(req.name));
+      var nc = String(req.newCode || '').trim();
+      if (nc) {
+        if (!/^\d{3,8}$/.test(nc)) throw kvErr('Код — от 3 до 8 цифр');
+        if (db.participants.some(function (x) { return x !== pr && String(x.code) === nc; })) throw kvErr('Такой код уже занят');
+      } else {
+        nc = kvNewCode(db);
+      }
+      pr.code = nc;
+      dirty.push('participants');
+      if (pr === me) return { result: { codeChanged: nc }, dirty: dirty };
+      break;
+    }
+
+    case 'deletePerson': {
+      needAdmin();
+      var pd = person(String(req.name));
+      if (pd === me) throw kvErr('Нельзя удалить самого себя');
+      db.participants = db.participants.filter(function (x) { return x !== pd; });
+      db.r1 = db.r1.filter(function (v) { return v.name !== pd.name; });
+      db.r2 = db.r2.filter(function (v) { return v.name !== pd.name; });
+      dirty.push('participants', 'r1', 'r2');
+      break;
+    }
+
+    /* ----- форматы и настройки ----- */
+
+    case 'setFormatActive': {
+      needAdmin();
+      var fid = String(req.id);
+      if (!kvHasFormat(db, fid)) throw kvErr('Нет такого формата');
+      db.formats.forEach(function (f) { if (f.id === fid) f.active = !!req.active; });
+      dirty.push('formats');
       break;
     }
 
@@ -343,21 +455,12 @@ function loadDb_() {
     ['title', 'tagline', 'type', 'how', 'structure', 'audience', 'props', 'experience'].forEach(function (k) {
       f[k] = String(f[k] || '');
     });
-    f.active = fIdx.active < 0 || String(f.active).trim() === '' || yes(f.active);
+    f.active = String(f.active).trim() === '' || yes(f.active);
     return f;
-  }).filter(function (f) { return f.id && f.active; });
-  formats.forEach(function (f) { delete f.active; });
+  }).filter(function (f) { return f.id; });
 
   var participants = rows_(SHEETS.participants).map(function (r) {
-    // Роль: «участник» голосует, «гость» только смотрит результаты,
-    // «админ» управляет раундами. Можно совместить: «участник, админ».
-    var role = String(r[2]).trim().toLowerCase();
-    return {
-      name: String(r[0]).trim(),
-      code: String(r[1]).trim(),
-      admin: role.indexOf('админ') >= 0,
-      votes: role === '' || role.indexOf('участ') >= 0
-    };
+    return { name: String(r[0]).trim(), code: String(r[1]).trim(), role: String(r[2]).trim().toLowerCase() || 'участник' };
   }).filter(function (p) { return p.name && p.code; });
 
   var r1 = rows_(SHEETS.r1).map(function (r) {
@@ -377,29 +480,45 @@ function loadDb_() {
   state.finalists = String(state.finalists || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
   state.finalMain = String(state.finalMain || '');
   state.finalSlot1 = String(state.finalSlot1 || '');
+  state.siteUrl = String(state.siteUrl || '');
 
   return { formats: formats, participants: participants, r1: r1, r2: r2, state: state };
 }
 
-function writeTable_(name, header, rows) {
+function writeTable_(name, header, rows, textCols) {
   var sh = sheet_(name);
   sh.clearContents();
   var all = [header].concat(rows);
+  (textCols || []).forEach(function (col) { sh.getRange(1, col, all.length, 1).setNumberFormat('@'); });
   sh.getRange(1, 1, all.length, header.length).setValues(all);
 }
 
 function saveDb_(db, dirty) {
-  if (dirty.indexOf('r1') >= 0) {
+  var has = function (k) { return dirty.indexOf(k) >= 0; };
+  if (has('r1')) {
     writeTable_(SHEETS.r1, R1_COLS, db.r1.map(function (v) {
       return [v.time, v.name, v.picks[0] || '', v.picks[1] || '', v.picks[2] || ''];
     }));
   }
-  if (dirty.indexOf('r2') >= 0) {
+  if (has('r2')) {
     writeTable_(SHEETS.r2, R2_COLS, db.r2.map(function (v) {
       return [v.time, v.name, v.main, v.slot1 || '', v.twice ? 'да' : ''];
     }));
   }
-  if (dirty.indexOf('state') >= 0) {
+  if (has('participants')) {
+    writeTable_(SHEETS.participants, PEOPLE_COLS, db.participants.map(function (p) {
+      return [p.name, String(p.code), p.role, kvLink(db, p.code)];
+    }), [2]);
+  }
+  if (has('formats')) {
+    writeTable_(SHEETS.formats, FORMAT_COLS.map(function (c) { return c[1]; }), db.formats.map(function (f) {
+      return FORMAT_COLS.map(function (c) {
+        if (c[0] === 'active') return f.active === false ? 'нет' : 'да';
+        return f[c[0]];
+      });
+    }));
+  }
+  if (has('state')) {
     var st = db.state;
     writeTable_(SHEETS.state, ['Ключ', 'Что это', 'Значение'], STATE_KEYS.map(function (k) {
       var v = st[k[0]];
@@ -445,51 +564,24 @@ function doPost(e) {
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Kompot Vote')
     .addItem('Выдать коды и ссылки', 'fillCodes')
-    .addItem('Перевыпустить код выделенного участника', 'reissueSelected')
     .addToUi();
 }
 
-/** Пятизначный цифровой код без ведущего нуля (таблица его не съест). */
-function newCode_(taken) {
-  for (;;) {
-    var c = String(10000 + Math.floor(Math.random() * 90000));
-    if (!taken[c]) { taken[c] = true; return c; }
-  }
-}
-
-function siteUrl_() {
-  var st = loadDb_().state;
-  var u = String(st.siteUrl || '');
-  return u && u.slice(-1) !== '/' ? u + '/' : u;
-}
-
-/** Выдаёт коды тем, у кого их нет, и пишет личные ссылки. */
+/** Выдаёт коды тем, у кого их нет, и обновляет личные ссылки. */
 function fillCodes() {
-  var sh = sheet_(SHEETS.participants);
-  var values = sh.getDataRange().getValues();
-  if (String(values[0][0]) !== PEOPLE_COLS[0]) throw new Error('На листе «Участники» первая строка — заголовки');
-  var taken = {};
-  values.slice(1).forEach(function (r) { if (r[1]) taken[String(r[1]).toUpperCase()] = true; });
-  var url = siteUrl_();
-  for (var i = 1; i < values.length; i++) {
-    if (!String(values[i][0]).trim()) continue;
-    if (!String(values[i][1]).trim()) values[i][1] = newCode_(taken);
-    if (String(values[i][2]).trim() === '') values[i][2] = 'участник';
-    values[i][3] = url + '?code=' + values[i][1];
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var db = loadDb_();
+    var sh = sheet_(SHEETS.participants);
+    var values = sh.getDataRange().getValues();
+    values.slice(1).forEach(function (r) {
+      var name = String(r[0]).trim();
+      if (!name || String(r[1]).trim()) return;
+      db.participants.push({ name: name, code: kvNewCode(db), role: String(r[2]).trim().toLowerCase() || 'участник' });
+    });
+    saveDb_(db, ['participants']);
+  } finally {
+    lock.releaseLock();
   }
-  sh.getRange(1, 1, values.length, values[0].length).setValues(values);
-}
-
-/** Новый код для участника в выделенной строке листа «Участники». */
-function reissueSelected() {
-  var sh = SpreadsheetApp.getActiveSheet();
-  if (sh.getName() !== SHEETS.participants) throw new Error('Открой лист «Участники» и выдели строку участника');
-  var row = sh.getActiveRange().getRow();
-  if (row < 2) throw new Error('Выдели строку участника, а не заголовок');
-  var values = sh.getDataRange().getValues();
-  var taken = {};
-  values.slice(1).forEach(function (r) { if (r[1]) taken[String(r[1]).toUpperCase()] = true; });
-  var code = newCode_(taken);
-  sh.getRange(row, 2).setValue(code);
-  sh.getRange(row, 4).setValue(siteUrl_() + '?code=' + code);
 }
