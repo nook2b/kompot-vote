@@ -6,7 +6,7 @@
   var DEMO = params.has('demo');
   var OFF = !CFG.apiUrl && !DEMO; // бэкенд ещё не подключён
   var LS_CODE = DEMO ? 'kompot.demo.code' : 'kompot.code';
-  var LS_DB = 'kompot.demo.db3';
+  var LS_DB = 'kompot.demo.db4';
   var POLL_MS = 7000;
 
   var DEMO_PEOPLE = [
@@ -93,7 +93,7 @@
         participants: DEMO_PEOPLE.map(function (p) { return Object.assign({}, p); }),
         r1: [], r2: [],
         state: {
-          round: 1, finalists: [], finalMain: '', finalSlot1: '', conferenceMin: 10, showMin: 90,
+          round: 1, finalists: [], finalMain: '', finalSlot1: '', conferenceMin: 5, showMin: 95,
           siteUrl: location.origin + location.pathname
         }
       };

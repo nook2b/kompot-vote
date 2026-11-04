@@ -456,8 +456,8 @@ var STATE_KEYS = [
   ['finalists', 'Финалисты (id через запятую)', ''],
   ['finalMain', 'Итог: слот 2', ''],
   ['finalSlot1', 'Итог: слот 1', ''],
-  ['conferenceMin', 'Конферанс, мин', 10],
-  ['showMin', 'Длина шоу, мин', 90],
+  ['conferenceMin', 'Конферанс, мин', 5],
+  ['showMin', 'Длина шоу, мин', 95],
   ['siteUrl', 'Адрес страницы', 'https://nook2b.github.io/kompot-vote/']
 ];
 
