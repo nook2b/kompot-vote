@@ -156,6 +156,7 @@ h3 { font-size: 17px; margin: 0 0 8px; font-weight: 800; }
 .choice.sel.purple .mark { background: var(--purple); border-color: var(--purple); color: #fff; }
 .choice .t { flex: 1; min-width: 0; }
 .choice .t b { display: block; font-size: 17px; line-height: 1.3; }
+.choice .t b .chip { display: inline-block; margin: 2px 0 0 6px; font-size: 12px; vertical-align: 2px; }
 .choice .t span { display: block; color: var(--muted); font-size: 15px; margin-top: 2px; }
 .choice .t .chips { margin-top: 10px; }
 .more { background: none; border: 0; padding: 8px 0 0; color: var(--purple); font-weight: 800; font-size: 15px; }

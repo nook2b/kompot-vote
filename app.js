@@ -338,7 +338,7 @@
       over = '<div class="tl-over' + (lo > show ? '' : ' maybe') + '" style="left:' + left + '%"></div>' +
         '<div class="tl-limit" style="left:' + left + '%"><span>' + show + ' мин</span></div>';
     }
-    var status = hi <= show ? '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>' : '';
+    var status = !f2 ? '' : hi <= show ? '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>' : '';
     var mm = function (i) { return i.min === i.max ? i.min + ' мин' : i.min + '–' + i.max + ' мин'; };
     return '<div class="tl' + (opts.compact ? ' compact' : '') + '">' +
       '<div class="tl-bar' + (over ? ' has-limit' : '') + '">' + segs + over + '</div>' +
