@@ -312,6 +312,37 @@ function kvHandle(db, req, nowIso) {
       break;
     }
 
+    case 'simulate': {
+      // Для проверки: случайные голоса за всех участников, кто ещё не голосовал в текущем раунде.
+      needAdmin();
+      if (st.round > 2) throw kvErr('Итог уже объявлен — сначала вернись во второй раунд');
+      var ids = kvFormatIds(db), longs = kvLongIds(db), added = 0;
+      var shuffle = function (a) {
+        a = a.slice();
+        for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+        return a;
+      };
+      kvVoters(db).forEach(function (p) {
+        if (p.name === me.name) return; // свой голос админ ставит сам
+        if (st.round === 1 && !kvByName(db.r1, p.name)) {
+          db.r1.push({ time: nowIso, name: p.name, picks: shuffle(ids).slice(0, KV_PICKS_R1) });
+          added++;
+        }
+        if (st.round === 2 && kvByName(db.r1, p.name) && !kvByName(db.r2, p.name)) {
+          var m = shuffle(st.finalists)[0], roll = Math.random();
+          var tw = false, s1 = '';
+          if (longs.indexOf(m) < 0) {
+            if (roll < 0.25) tw = true;
+            else if (roll < 0.8) s1 = shuffle(ids.filter(function (id) { return id !== m && longs.indexOf(id) < 0; }))[0] || '';
+          }
+          db.r2.push({ time: nowIso, name: p.name, main: m, slot1: s1, twice: tw });
+          added++;
+        }
+      });
+      dirty.push(st.round === 1 ? 'r1' : 'r2');
+      return { result: Object.assign(kvView(db, me), { simulated: added }), dirty: dirty };
+    }
+
     case 'reset': {
       needAdmin();
       db.r1 = [];

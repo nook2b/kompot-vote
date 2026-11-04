@@ -706,7 +706,7 @@
       '<button class="btn danger small" data-act="a-clear" data-round="1">Стереть раунд 1</button>' +
       '<button class="btn danger small" data-act="a-clear" data-round="2">Стереть раунд 2</button>' +
       '<button class="btn danger small" data-act="a-reset">Стереть всё и начать заново</button>' +
-      (DEMO ? '<button class="btn ghost small" data-act="demofill">Демо: накидать голоса</button>' : '') +
+      '<button class="btn ghost small" data-act="a-sim">Симулировать голоса</button>' +
       '</div></div>';
 
     // Участники
@@ -775,26 +775,6 @@
     else body = finalScreen();
     app.className = 'wrap' + (S.page === 'admin' ? ' wide' : '');
     app.innerHTML = header() + body;
-  }
-
-  /* ---------- демо: голоса за остальных ---------- */
-
-  function demoFill() {
-    var db = demoDb();
-    var ids = db.formats.filter(function (f) { return f.active !== false; }).map(function (f) { return f.id; });
-    function shuffle(a) { a = a.slice(); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
-    var now = new Date().toISOString();
-    db.participants.filter(function (p) { return window.kvRole(p.role).votes && p.name !== S.view.me.name; }).forEach(function (p) {
-      var has1 = db.r1.some(function (r) { return r.name === p.name; });
-      if (db.state.round === 1 && !has1) db.r1.push({ time: now, name: p.name, picks: shuffle(ids).slice(0, 3) });
-      if (db.state.round === 2 && has1 && !db.r2.some(function (r) { return r.name === p.name; })) {
-        var main = shuffle(db.state.finalists)[0], roll = Math.random();
-        db.r2.push({ time: now, name: p.name, main: main, twice: roll < .25, slot1: roll >= .25 && roll < .8 ? shuffle(ids.filter(function (id) { return id !== main; }))[0] : '' });
-      }
-    });
-    lsSet(LS_DB, JSON.stringify(db));
-    S.adm.touched = false;
-    act('state', null, 'Голоса добавлены');
   }
 
   /* ---------- события ---------- */
@@ -946,7 +926,13 @@
           }).catch(function () { toast('Не удалось загрузить описания', true); });
         }
         break;
-      case 'demofill': demoFill(); break;
+      case 'a-sim':
+        if (confirm('Для проверки: проголосовать случайно за всех, кто ещё не голосовал в текущем раунде (кроме тебя). Голоса запишутся в таблицу — потом сотри их кнопкой «Стереть всё».')) {
+          act('simulate', null).then(function (ok) {
+            if (ok) { S.adm.touched = false; toast('Добавлено голосов: ' + (S.view.simulated || 0)); render(); }
+          });
+        }
+        break;
     }
   });
 
