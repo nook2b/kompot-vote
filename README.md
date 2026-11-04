@@ -39,7 +39,7 @@
 ### 2. Опубликовать страницу
 
 1. GitHub → репозиторий → **Settings → General → Danger Zone → Change visibility → Public**.
-2. **Settings → Pages → Build and deployment → Deploy from a branch**, ветка с кодом, папка `/ (root)`.
+2. **Settings → Pages → Build and deployment → Deploy from a branch**, ветка `main`, папка `/ (root)`.
 3. Через минуту страница откроется по адресу `https://nook2b.github.io/kompot-vote/`.
 
 ### 3. Прогон
@@ -69,3 +69,8 @@ python3 -m http.server 8000
 ```
 
 Затем открой `http://localhost:8000/?demo` — это демо-режим.
+
+## Ветки
+
+- `main` — основная ветка, с неё раздаётся сайт. Всё, что в `main`, сразу попадает на страницу.
+- Правки делаются в отдельной ветке и сливаются в `main` через pull request.
