@@ -565,7 +565,7 @@
     var v = S.view, sel = S.sel2, main = sel.main;
     var opts = [
       choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
-      choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, на разные подсказки', selected: sel.twice, purple: true })
+      choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, но разные вдохновения', selected: sel.twice, purple: true })
     ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
       var f = F(id);
       return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
@@ -609,7 +609,7 @@
   function finalScreen() {
     var v = S.view, fin = v.final;
     var m = F(fin.main), s1 = fin.slot1 ? F(fin.slot1) : null;
-    var text = !m ? '' : s1 && fin.slot1 === fin.main ? q(fin.main) + ' играем дважды, на разные подсказки.'
+    var text = !m ? '' : s1 && fin.slot1 === fin.main ? q(fin.main) + ' играем дважды, на разные вдохновения.'
       : s1 ? 'Сначала ' + q(fin.slot1) + ', потом ' + q(fin.main) + '.' : 'Весь вечер — ' + q(fin.main) + '.';
     return '<section class="screen">' +
       '<div class="hero" style="padding-top:8px"><span class="kicker">Итог</span><h1>Программа шоу</h1><p class="lead">' + text + '</p></div>' +
