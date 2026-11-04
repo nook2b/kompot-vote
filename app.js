@@ -5,7 +5,7 @@
   var params = new URLSearchParams(location.search);
   var DEMO = !CFG.apiUrl || params.has('demo');
   var LS_CODE = DEMO ? 'kompot.demo.code' : 'kompot.code';
-  var LS_DB = 'kompot.demo.db2';
+  var LS_DB = 'kompot.demo.db3';
   var POLL_MS = 7000;
 
   var DEMO_PEOPLE = [
@@ -327,14 +327,14 @@
     var segs = items.map(function (i) {
       return '<div class="seg ' + i.cls + '" style="width:' + ((i.min + i.max) / 2 / scale * 100).toFixed(1) + '%"></div>';
     }).join('');
-    var limit = hi > show ? '<div class="tl-limit" style="left:' + (show / scale * 100).toFixed(1) + '%"><span>' + show + '</span></div>' : '';
+    var limit = hi > show ? '<div class="tl-limit" style="left:' + (show / scale * 100).toFixed(1) + '%"><span>лимит ' + show + '</span></div>' : '';
     var status;
     if (lo > show) status = '<span class="pill bad">Не влезает: +' + (lo - show) + '–' + (hi - show) + ' мин</span>';
     else if (hi > show) status = '<span class="pill warn">Может не влезть: до +' + (hi - show) + ' мин</span>';
     else status = '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>';
     var mm = function (i) { return i.min === i.max ? i.min + ' мин' : i.min + '–' + i.max + ' мин'; };
     return '<div class="tl">' +
-      '<div class="tl-bar">' + segs + limit + '</div>' +
+      '<div class="tl-bar' + (limit ? ' has-limit' : '') + '">' + segs + limit + '</div>' +
       '<div class="tl-scale"><span>0</span><span>' + scale + ' мин</span></div>' +
       '<ul class="tl-legend">' + items.map(function (i) {
         return '<li><i class="dot ' + i.cls + '"></i><span class="k">' + i.k + '</span><span class="v">' + esc(i.label) + '</span><span class="m">' + mm(i) + '</span></li>';
@@ -539,7 +539,7 @@
   function r2Review() {
     var sel = S.sel2;
     return '<section class="screen">' +
-      '<span class="kicker">Шаг 3 из 3</span><h1>Так выглядит вечер</h1>' +
+      '<span class="kicker">Шаг 3 из 3</span><h1>Структура шоу</h1>' +
       '<p class="lead">Проверь и отправь. Голос можно будет поменять, пока раунд открыт.</p>' +
       timeline(sel.twice ? sel.main : sel.slot1, sel.main) +
       '</section>' +
@@ -698,6 +698,8 @@
     // Форматы
     html += '<div class="acard"><h2>Форматы в голосовании</h2>' +
       '<p class="hint">Выключенный формат пропадает из голосования. Тексты правятся в таблице.</p>' +
+      '<button class="btn ghost small" data-act="a-import">Загрузить описания с сайта</button>' +
+      '<p class="note" style="margin:6px 0 10px">Добавит новые форматы и обновит тексты и тайминги из <code>data/formats.json</code>.</p>' +
       a.allFormats.map(function (f) {
         return '<label class="switch"><span>' + esc(f.title) + '</span><input type="checkbox" data-act="a-fmt" data-id="' + esc(f.id) + '"' + (f.active ? ' checked' : '') + '></label>';
       }).join('') + '</div>';
@@ -885,6 +887,13 @@
           conferenceMin: Number(document.getElementById('conf-min').value),
           showMin: Number(document.getElementById('show-min').value)
         }, 'Сохранено');
+        break;
+      case 'a-import':
+        if (confirm('Обновить форматы из описаний на сайте? Новые добавятся, тексты и тайминги обновятся. Включено/выключено сохранится.')) {
+          fetch('data/formats.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (list) {
+            act('importFormats', { formats: list }, 'Форматы обновлены');
+          }).catch(function () { toast('Не удалось загрузить описания', true); });
+        }
         break;
       case 'demofill': demoFill(); break;
     }

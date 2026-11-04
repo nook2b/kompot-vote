@@ -207,7 +207,8 @@ details.fold .choices { margin-top: 10px; }
 .seg.s1, .dot.s1 { background: var(--purple); }
 .seg.s2, .dot.s2 { background: var(--orange); }
 .tl-limit { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--red); border-radius: 2px; }
-.tl-limit span { position: absolute; top: 28px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 800; color: var(--red); white-space: nowrap; }
+.tl-bar.has-limit { margin-top: 26px; }
+.tl-limit span { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 800; color: var(--red); white-space: nowrap; }
 .tl-scale { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 6px; }
 .tl-legend { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
 .tl-legend li { display: flex; align-items: center; gap: 12px; }

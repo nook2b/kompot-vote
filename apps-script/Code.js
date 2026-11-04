@@ -381,6 +381,25 @@ function kvHandle(db, req, nowIso) {
       break;
     }
 
+    case 'importFormats': {
+      needAdmin();
+      var list = req.formats || [];
+      if (!list.length) throw kvErr('Пустой список форматов');
+      var fields = ['title', 'tagline', 'type', 'how', 'structure', 'audience', 'props', 'experience'];
+      list.forEach(function (src) {
+        var id = String(src.id || '').trim();
+        if (!id || !src.title) return;
+        var f = null;
+        db.formats.forEach(function (x) { if (x.id === id) f = x; });
+        if (!f) { f = { id: id, active: true }; db.formats.push(f); }
+        fields.forEach(function (k) { f[k] = String(src[k] || ''); });
+        f.min = Number(src.min) || 0;
+        f.max = Number(src.max) || f.min;
+      });
+      dirty.push('formats');
+      break;
+    }
+
     case 'settings': {
       needAdmin();
       var c = Number(req.conferenceMin), s = Number(req.showMin);
