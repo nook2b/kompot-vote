@@ -574,11 +574,12 @@
     var opts = [
       choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
       choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, но разные вдохновения', selected: sel.twice, purple: true })
-    ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
+    ].concat(v.finalists.filter(function (id) { return id !== main && !isLong(id); }).map(function (id) {
       var f = F(id);
       return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + durFull(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
     }));
-    var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
+    // Формат «на весь вечер» в первый слот не помещается.
+    var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0 && !isLong(f.id); });
     var openOthers = others.some(function (f) { return f.id === sel.slot1; });
     return '<section class="screen">' +
       '<span class="kicker">Шаг 2 из 2 · по желанию</span><h1>Что играем в первом слоте?</h1>' +
@@ -681,7 +682,7 @@
     // Итог
     if (v.finalists.length) {
       var t = v.r2 || { main: {}, slot1: {}, twice: {}, none: 0 };
-      var s1Ids = sortedBy(t.slot1, v.formats.map(function (f) { return f.id; }));
+      var s1Ids = sortedBy(t.slot1, v.formats.filter(function (f) { return !isLong(f.id); }).map(function (f) { return f.id; }));
       html += '<div class="acard"><h2>3. Итог</h2>' +
         '<p class="hint">Проголосовали во втором раунде ' + v.counts.r2 + ' из ' + v.counts.r2Eligible + '. Отмечены победители — можно выбрать иначе.</p>' +
         '<h3>Слот 2 — главный формат</h3>' + tie(a.mainProposal, 'за главный формат') +

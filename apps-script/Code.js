@@ -247,6 +247,7 @@ function kvHandle(db, req, nowIso) {
       if (kvLongIds(db).indexOf(main) >= 0) { twice = false; slot1 = ''; } // формат на весь вечер
       if (slot1) {
         kvCheckFormat(db, slot1, 'слот 1');
+        if (kvLongIds(db).indexOf(slot1) >= 0) throw kvErr('Этот формат идёт на весь вечер — в первый слот он не помещается');
         if (slot1 === main) { twice = true; slot1 = ''; }
       }
       var r = kvByName(db.r2, me.name);
@@ -293,6 +294,7 @@ function kvHandle(db, req, nowIso) {
       var fs = req.slot1 ? String(req.slot1) : '';
       if (kvLongIds(db).indexOf(fm) >= 0) fs = ''; // формат на весь вечер
       if (fs) kvCheckFormat(db, fs, 'слот 1');
+      if (fs && kvLongIds(db).indexOf(fs) >= 0) throw kvErr('Формат на весь вечер не ставится в первый слот');
       st.finalMain = fm;
       st.finalSlot1 = fs;
       st.round = 3;
@@ -603,10 +605,13 @@ function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function route_(req) {
+function route_(raw) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  var locked = false;
   try {
+    var req = typeof raw === 'function' ? raw() : raw;
+    lock.waitLock(20000);
+    locked = true;
     var db = loadDb_();
     var out = kvHandle(db, req, new Date().toISOString());
     if (out.dirty && out.dirty.length) {
@@ -617,17 +622,17 @@ function route_(req) {
   } catch (e) {
     return json_({ ok: false, error: e.kvUser ? e.message : 'Ошибка сервера: ' + e.message });
   } finally {
-    lock.releaseLock();
+    if (locked) lock.releaseLock();
   }
 }
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  return route_(p.payload ? JSON.parse(p.payload) : { action: 'ping' });
+  return route_(function () { return p.payload ? JSON.parse(p.payload) : { action: 'ping' }; });
 }
 
 function doPost(e) {
-  return route_(JSON.parse(e.postData.contents || '{}'));
+  return route_(function () { return JSON.parse((e && e.postData && e.postData.contents) || '{}'); });
 }
 
 /* ===================== Меню в таблице ===================== */
