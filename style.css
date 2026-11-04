@@ -208,6 +208,9 @@ details.fold .choices { margin-top: 10px; }
 .seg.s2, .dot.s2 { background: var(--orange); }
 .tl-limit { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--red); border-radius: 2px; }
 .tl-bar.has-limit { margin-top: 26px; }
+.tl-over { position: absolute; top: -3px; bottom: -3px; right: 0; border-radius: 0 99px 99px 0; background: repeating-linear-gradient(135deg, rgba(201, 58, 43, .85) 0 5px, rgba(201, 58, 43, .15) 5px 10px); }
+.tl-over.maybe { background: repeating-linear-gradient(135deg, rgba(201, 58, 43, .55) 0 5px, rgba(201, 58, 43, .08) 5px 10px); }
+.tl-key { display: inline-block; width: 18px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: repeating-linear-gradient(135deg, rgba(201, 58, 43, .85) 0 3px, rgba(201, 58, 43, .15) 3px 6px); }
 .tl-limit span { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 800; color: var(--red); white-space: nowrap; }
 .tl-scale { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 6px; }
 .tl-legend { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }

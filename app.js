@@ -3,7 +3,8 @@
 
   var CFG = window.KOMPOT_CONFIG || {};
   var params = new URLSearchParams(location.search);
-  var DEMO = !CFG.apiUrl || params.has('demo');
+  var DEMO = params.has('demo');
+  var OFF = !CFG.apiUrl && !DEMO; // бэкенд ещё не подключён
   var LS_CODE = DEMO ? 'kompot.demo.code' : 'kompot.code';
   var LS_DB = 'kompot.demo.db3';
   var POLL_MS = 7000;
@@ -43,6 +44,7 @@
     for (var i = 0; i < fs.length; i++) if (fs[i].id === id) return fs[i];
     return null;
   }
+  function isLong(id) { return S.view && (S.view.longIds || []).indexOf(id) >= 0; }
   function title(id) { var f = F(id); return f ? f.title : id; }
   function q(id) { return '«' + esc(title(id)) + '»'; }
   function dur(f) { return f.min === f.max ? f.min + ' мин' : f.min + '–' + f.max + ' мин'; }
@@ -324,18 +326,21 @@
     var lo = 0, hi = 0;
     items.forEach(function (i) { lo += i.min; hi += i.max; });
     var scale = Math.max(show, hi) || 1;
+    // Полоса рисуется по верхней границе длительности, чтобы перебор был виден честно.
     var segs = items.map(function (i) {
-      return '<div class="seg ' + i.cls + '" style="width:' + ((i.min + i.max) / 2 / scale * 100).toFixed(1) + '%"></div>';
+      return '<div class="seg ' + i.cls + '" style="width:' + (i.max / scale * 100).toFixed(2) + '%"></div>';
     }).join('');
-    var limit = hi > show ? '<div class="tl-limit" style="left:' + (show / scale * 100).toFixed(1) + '%"><span>лимит ' + show + '</span></div>' : '';
-    var status;
-    if (lo > show) status = '<span class="pill bad">Не влезает: +' + (lo - show) + '–' + (hi - show) + ' мин</span>';
-    else if (hi > show) status = '<span class="pill warn">Может не влезть: до +' + (hi - show) + ' мин</span>';
-    else status = '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>';
+    var over = '';
+    if (hi > show) {
+      var left = (show / scale * 100).toFixed(2);
+      over = '<div class="tl-over' + (lo > show ? '' : ' maybe') + '" style="left:' + left + '%"></div>' +
+        '<div class="tl-limit" style="left:' + left + '%"><span>' + show + ' мин</span></div>';
+    }
+    var status = hi <= show ? '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>' : '';
     var mm = function (i) { return i.min === i.max ? i.min + ' мин' : i.min + '–' + i.max + ' мин'; };
     return '<div class="tl">' +
-      '<div class="tl-bar' + (limit ? ' has-limit' : '') + '">' + segs + limit + '</div>' +
-      '<div class="tl-scale"><span>0</span><span>' + scale + ' мин</span></div>' +
+      '<div class="tl-bar' + (over ? ' has-limit' : '') + '">' + segs + over + '</div>' +
+      '<div class="tl-scale"><span>0</span><span>' + (over ? '<i class="tl-key"></i>за пределами шоу' : show + ' мин') + '</span></div>' +
       '<ul class="tl-legend">' + items.map(function (i) {
         return '<li><i class="dot ' + i.cls + '"></i><span class="k">' + i.k + '</span><span class="v">' + esc(i.label) + '</span><span class="m">' + mm(i) + '</span></li>';
       }).join('') + '</ul>' +
@@ -483,7 +488,7 @@
     if (!v.canVoteR2) return r2Watch('Во втором раунде голосуют те, кто голосовал в первом.');
     var s = S.screen || (v.mine.r2 ? 'done' : 'intro');
     if (s === 'main') return r2Main();
-    if (s === 'slot') return S.sel2.main ? r2Slot() : r2Main();
+    if (s === 'slot') return S.sel2.main && !isLong(S.sel2.main) ? r2Slot() : r2Main();
     if (s === 'review') return S.sel2.main ? r2Review() : r2Main();
     if (s === 'done' && v.mine.r2) return r2Done();
     return r2Intro();
@@ -503,14 +508,14 @@
   function r2Main() {
     var v = S.view;
     return '<section class="screen">' +
-      '<span class="kicker">Шаг 1 из 3</span><h1>Главный формат</h1>' +
-      '<p class="lead">Он займёт второй слот — основную часть вечера.</p>' +
+      '<span class="kicker">Шаг 1 из ' + (isLong(S.sel2.main) ? 2 : 3) + '</span><h1>Главный формат</h1>' +
+      '<p class="lead">Он займёт второй слот — основную часть вечера. Формат с пометкой «на весь вечер» идёт без первого слота.</p>' +
       '<div class="choices">' + v.finalists.map(function (id) {
         var f = F(id);
-        return f ? choice('main', id, { format: f, title: esc(f.title), sub: esc(f.tagline), chips: true, expandable: true, selected: S.sel2.main === id }) : '';
+        return f ? choice('main', id, { format: f, title: esc(f.title) + (isLong(id) ? ' <span class="chip fin">на весь вечер</span>' : ''), sub: esc(f.tagline), chips: true, expandable: true, selected: S.sel2.main === id }) : '';
       }).join('') + '</div></section>' +
       bar('<button class="btn ghost" data-act="go" data-screen="intro" aria-label="Назад">←</button>', '',
-        '<button class="btn" data-act="go" data-screen="slot"' + (S.sel2.main ? '' : ' disabled') + '>Дальше →</button>');
+        '<button class="btn" data-act="go" data-screen="' + (isLong(S.sel2.main) ? 'review' : 'slot') + '"' + (S.sel2.main ? '' : ' disabled') + '>Дальше →</button>');
   }
 
   function r2Slot() {
@@ -537,19 +542,19 @@
   }
 
   function r2Review() {
-    var sel = S.sel2;
+    var sel = S.sel2, long = isLong(sel.main);
     return '<section class="screen">' +
-      '<span class="kicker">Шаг 3 из 3</span><h1>Структура шоу</h1>' +
-      '<p class="lead">Проверь и отправь. Голос можно будет поменять, пока раунд открыт.</p>' +
-      timeline(sel.twice ? sel.main : sel.slot1, sel.main) +
+      '<span class="kicker">' + (long ? 'Шаг 2 из 2' : 'Шаг 3 из 3') + '</span><h1>Структура шоу</h1>' +
+      '<p class="lead">' + (long ? q(sel.main) + ' занимает весь вечер, поэтому первый слот не выбирается. ' : '') + 'Проверь и отправь. Голос можно будет поменять, пока раунд открыт.</p>' +
+      timeline(long ? '' : sel.twice ? sel.main : sel.slot1, sel.main) +
       '</section>' +
-      bar('<button class="btn ghost" data-act="go" data-screen="slot" aria-label="Назад">←</button>', '',
+      bar('<button class="btn ghost" data-act="go" data-screen="' + (long ? 'main' : 'slot') + '" aria-label="Назад">←</button>', '',
         '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
   }
 
   function r2Done() {
     var m = S.view.mine.r2;
-    var s1 = m.twice ? q(m.main) + ' дважды' : m.slot1 ? q(m.slot1) : 'без пожелания';
+    var s1 = isLong(m.main) ? 'не нужен, формат на весь вечер' : m.twice ? q(m.main) + ' дважды' : m.slot1 ? q(m.slot1) : 'без пожелания';
     return '<section class="screen">' +
       '<div class="hero" style="padding-top:8px"><div class="done-badge">✓</div><h1>Голос принят</h1>' +
       '<p class="lead">Главный формат: ' + q(m.main) + '. Слот 1: ' + s1 + '.</p>' +
@@ -643,13 +648,13 @@
           return '<label class="chk"><input type="radio" name="am" data-act="a-main" data-id="' + esc(id) + '"' + (A.main === id ? ' checked' : '') + '>' +
             '<span>' + esc(title(id)) + '</span><em>' + (t.main[id] || 0) + '</em></label>';
         }).join('') +
-        '<div class="sp"></div><h3>Слот 1</h3>' + tie(a.slot1Proposal, 'за слот 1') +
+        (isLong(A.main) ? '<div class="sp"></div><h3>Слот 1</h3><p class="note" style="margin:0">' + q(A.main) + ' идёт на весь вечер — первый слот будет пустым.</p>' : '<div class="sp"></div><h3>Слот 1</h3>' + tie(a.slot1Proposal, 'за слот 1') +
         '<label class="chk"><input type="radio" name="as" data-act="a-s1" data-id=""' + (A.slot1 === '' ? ' checked' : '') + '><span>Пусто — главный формат на весь вечер</span><em>' + t.none + '</em></label>' +
         s1Ids.map(function (id) {
           return '<label class="chk"><input type="radio" name="as" data-act="a-s1" data-id="' + esc(id) + '"' + (A.slot1 === id ? ' checked' : '') + '>' +
             '<span>' + esc(title(id)) + (id === A.main ? ' (дважды)' : '') + '</span><em>' + (t.slot1[id] || 0) + '</em></label>';
-        }).join('') +
-        '<div class="sp"></div><button class="btn wide" data-act="a-finish"' + (!A.main || A.slot1 === null || S.busy ? ' disabled' : '') + '>' +
+        }).join('')) +
+        '<div class="sp"></div><button class="btn wide" data-act="a-finish"' + (!A.main || (A.slot1 === null && !isLong(A.main)) || S.busy ? ' disabled' : '') + '>' +
         (v.round === 3 ? 'Обновить итог' : 'Объявить итог') + '</button>' +
         (v.round === 3 ? '<div class="sp"></div><button class="btn ghost wide" data-act="a-back2">Вернуть второй раунд</button>' : '') +
         '</div>';
@@ -717,7 +722,18 @@
 
   /* ---------- отрисовка ---------- */
 
+  /** Пока в config.js нет адреса бэкенда: никаких кодов и демо на главной. */
+  function renderOff() {
+    app.className = 'wrap';
+    app.innerHTML = '<section class="login"><div class="login-card">' +
+      '<div class="logo-tile"><img src="assets/logo-mark.jpg" alt=""></div>' +
+      '<h1>КОМПОТ</h1>' +
+      '<p class="sub">Голосование скоро откроется. Ссылку пришлёт Иван.</p>' +
+      '</div></section>';
+  }
+
   function render() {
+    if (OFF) { renderOff(); return; }
     if (!S.code || !S.view) { renderLogin(); return; }
     var v = S.view, body;
     if (S.page === 'admin' && v.admin) body = adminPage();
@@ -810,7 +826,7 @@
         render(); break;
       }
       case 'vote2':
-        act('vote2', { main: S.sel2.main, slot1: S.sel2.slot1, twice: S.sel2.twice }, 'Голос принят').then(function (ok) { if (ok) go('done'); });
+        act('vote2', isLong(S.sel2.main) ? { main: S.sel2.main } : { main: S.sel2.main, slot1: S.sel2.slot1, twice: S.sel2.twice }, 'Голос принят').then(function (ok) { if (ok) go('done'); });
         break;
       case 'edit2': {
         var r = v.mine.r2;
@@ -830,7 +846,7 @@
         break;
       }
       case 'a-finish': {
-        var s1 = S.adm.slot1;
+        var s1 = isLong(S.adm.main) ? '' : S.adm.slot1;
         if (confirm('Объявить итог? Слот 1: ' + (s1 ? title(s1) : 'пусто') + '. Слот 2: ' + title(S.adm.main) + '.')) {
           act('finish', { main: S.adm.main, slot1: s1 }, 'Итог объявлен');
         }
@@ -911,5 +927,7 @@
     history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
   }
   var saved = urlCode || lsGet(LS_CODE);
-  if (saved) login(saved); else renderLogin();
+  if (OFF) renderOff();
+  else if (saved) login(saved);
+  else renderLogin();
 })();

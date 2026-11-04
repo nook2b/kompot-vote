@@ -126,6 +126,19 @@ function kvCheckFormat(db, id, label) {
   if (kvFormatIds(db).indexOf(id) < 0) throw kvErr('Неизвестный формат' + (label ? ' (' + label + ')' : ''));
 }
 
+/**
+ * «Длинные» форматы занимают весь вечер: рядом с ними не влезает даже
+ * самый короткий другой формат. Для них первый слот не выбирается.
+ */
+function kvLongIds(db) {
+  var st = db.state, act = kvActive(db);
+  return act.filter(function (f) {
+    var others = act.filter(function (o) { return o.id !== f.id; }).map(function (o) { return o.min; });
+    var shortest = others.length ? Math.min.apply(null, others) : 0;
+    return st.conferenceMin + f.min + shortest > st.showMin;
+  }).map(function (f) { return f.id; });
+}
+
 function kvLink(db, code) {
   var u = String(db.state.siteUrl || '');
   if (u && u.slice(-1) !== '/') u += '/';
@@ -146,6 +159,7 @@ function kvView(db, me) {
     me: { name: me.name, role: me.role, admin: rights.admin, votes: rights.votes },
     formats: kvActive(db),
     finalists: st.finalists,
+    longIds: kvLongIds(db),
     settings: { conferenceMin: st.conferenceMin, showMin: st.showMin },
     counts: { total: voterNames.length, r1: r1Count, r2: r2Count, r2Eligible: r1Count },
     mine: {
@@ -230,6 +244,7 @@ function kvHandle(db, req, nowIso) {
       var twice = !!req.twice;
       var slot1 = req.slot1 ? String(req.slot1) : '';
       if (twice) slot1 = '';
+      if (kvLongIds(db).indexOf(main) >= 0) { twice = false; slot1 = ''; } // формат на весь вечер
       if (slot1) {
         kvCheckFormat(db, slot1, 'слот 1');
         if (slot1 === main) { twice = true; slot1 = ''; }
@@ -276,6 +291,7 @@ function kvHandle(db, req, nowIso) {
       var fm = String(req.main || '');
       if (st.finalists.indexOf(fm) < 0) throw kvErr('Главный формат должен быть из финалистов');
       var fs = req.slot1 ? String(req.slot1) : '';
+      if (kvLongIds(db).indexOf(fm) >= 0) fs = ''; // формат на весь вечер
       if (fs) kvCheckFormat(db, fs, 'слот 1');
       st.finalMain = fm;
       st.finalSlot1 = fs;
