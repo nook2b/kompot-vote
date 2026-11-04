@@ -292,3 +292,21 @@ details.fold .choices { margin-top: 10px; }
   .tl-legend .k { width: 58px; font-size: 12px; }
   .bar-in .btn { padding: 10px 14px; }
 }
+
+/* ---------- второй раунд на одном экране ---------- */
+.tl-sticky { position: sticky; top: 0; z-index: 4; margin: 8px -16px 4px; padding: 10px 16px 12px; background: linear-gradient(var(--bg) 85%, rgba(255, 248, 241, 0)); }
+.tl.compact { padding: 16px 18px; }
+.tl.compact .tl-legend { margin-top: 12px; gap: 6px; }
+.tl.compact .tl-legend li { font-size: 15px; }
+.tl.compact .tl-total { margin-top: 10px; padding-top: 10px; font-size: 15px; }
+.tl.compact .pill { font-size: 13px; padding: 3px 10px; }
+.dot.empty { background: none; border: 2px dashed #c9bfd6; }
+.tl-legend li.empty .v { color: var(--muted); font-weight: 600; font-style: italic; }
+.step-h { display: flex; align-items: center; gap: 10px; margin: 28px 0 6px; }
+.step-h .num { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--text); color: #fff; display: grid; place-items: center; font-size: 15px; }
+.step-h .muted { font-weight: 600; }
+.hint-l { color: var(--muted); margin: 0 0 14px; }
+@media (max-width: 520px) {
+  .tl.compact .tl-legend li { font-size: 14px; }
+  .tl.compact .tl-legend .m { font-size: 13px; }
+}

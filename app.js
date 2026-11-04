@@ -316,13 +316,15 @@
   }
 
   /** Таймлайн: полоса без подписей + понятная легенда под ней. */
-  function timeline(slot1Id, mainId) {
+  function timeline(slot1Id, mainId, opts) {
+    opts = opts || {};
     var v = S.view, c = v.settings.conferenceMin, show = v.settings.showMin;
     var items = [];
     if (c > 0) items.push({ cls: 'conf', k: 'Начало', label: 'Конферанс', min: c, max: c });
     var f1 = slot1Id ? F(slot1Id) : null, f2 = mainId ? F(mainId) : null;
     if (f1) items.push({ cls: 's1', k: 'Слот 1', label: f1.title, min: f1.min, max: f1.max });
     if (f2) items.push({ cls: 's2', k: f1 ? 'Слот 2' : 'Главный', label: f2.title, min: f2.min, max: f2.max });
+    else if (opts.compact) items.push({ cls: 'empty', k: 'Слот 2', label: 'выбери главный формат', min: 0, max: 0 });
     var lo = 0, hi = 0;
     items.forEach(function (i) { lo += i.min; hi += i.max; });
     var scale = Math.max(show, hi) || 1;
@@ -338,11 +340,11 @@
     }
     var status = hi <= show ? '<span class="pill good">Влезает, запас ' + (show - hi) + (hi !== lo ? '–' + (show - lo) : '') + ' мин</span>' : '';
     var mm = function (i) { return i.min === i.max ? i.min + ' мин' : i.min + '–' + i.max + ' мин'; };
-    return '<div class="tl">' +
+    return '<div class="tl' + (opts.compact ? ' compact' : '') + '">' +
       '<div class="tl-bar' + (over ? ' has-limit' : '') + '">' + segs + over + '</div>' +
-      '<div class="tl-scale"><span>0</span><span>' + (over ? '<i class="tl-key"></i>за пределами шоу' : show + ' мин') + '</span></div>' +
+      (opts.compact && !over ? '' : '<div class="tl-scale"><span>0</span><span>' + (over ? '<i class="tl-key"></i>за пределами шоу' : show + ' мин') + '</span></div>') +
       '<ul class="tl-legend">' + items.map(function (i) {
-        return '<li><i class="dot ' + i.cls + '"></i><span class="k">' + i.k + '</span><span class="v">' + esc(i.label) + '</span><span class="m">' + mm(i) + '</span></li>';
+        return '<li class="' + i.cls + '"><i class="dot ' + i.cls + '"></i><span class="k">' + i.k + '</span><span class="v">' + esc(i.label) + '</span><span class="m">' + (i.max ? mm(i) : '') + '</span></li>';
       }).join('') + '</ul>' +
       '<div class="tl-total"><span>Итого ' + (lo === hi ? lo : lo + '–' + hi) + ' мин из ' + show + '</span>' + status + '</div>' +
       '</div>';
@@ -487,9 +489,7 @@
     if (!v.me.votes) return r2Watch('Команда выбирает главный формат и что играть в первом слоте.');
     if (!v.canVoteR2) return r2Watch('Во втором раунде голосуют те, кто голосовал в первом.');
     var s = S.screen || (v.mine.r2 ? 'done' : 'intro');
-    if (s === 'main') return r2Main();
-    if (s === 'slot') return S.sel2.main && !isLong(S.sel2.main) ? r2Slot() : r2Main();
-    if (s === 'review') return S.sel2.main ? r2Review() : r2Main();
+    if (s === 'vote') return r2Vote();
     if (s === 'done' && v.mine.r2) return r2Done();
     return r2Intro();
   }
@@ -499,57 +499,53 @@
     return '<section class="screen hero">' +
       '<span class="kicker">Раунд 2 из 2 · финал</span>' +
       '<h1>Выбираем программу вечера</h1>' +
-      '<p class="lead">Сначала — главный формат из финалистов. Потом, по желанию, что сыграть в первом слоте.</p>' +
+      '<p class="lead">Выбери главный формат из финалистов и, по желанию, что сыграть в первом слоте. Таймлайн вечера будет собираться прямо на ходу.</p>' +
       '<div class="pick-list">' + v.finalists.map(function (id) { return '<span class="chip fin">' + esc(title(id)) + '</span>'; }).join('') + '</div>' +
-      '<button class="btn big" data-act="go" data-screen="main">Начать →</button>' +
+      '<button class="btn big" data-act="go" data-screen="vote">Начать →</button>' +
       '</section>';
   }
 
-  function r2Main() {
-    var v = S.view;
-    return '<section class="screen">' +
-      '<span class="kicker">Шаг 1 из ' + (isLong(S.sel2.main) ? 2 : 3) + '</span><h1>Главный формат</h1>' +
-      '<p class="lead">Он займёт второй слот — основную часть вечера. Формат с пометкой «на весь вечер» идёт без первого слота.</p>' +
+  /** Один экран: сверху живой таймлайн, ниже главный формат и первый слот. */
+  function r2Vote() {
+    var v = S.view, sel = S.sel2, main = sel.main, long = isLong(main);
+    var slot1 = !main || long ? '' : sel.twice ? main : sel.slot1;
+
+    var html = '<section class="screen">' +
+      '<span class="kicker">Раунд 2 · финал</span><h1>Собери программу вечера</h1>' +
+      '<div class="tl-sticky">' + timeline(slot1, main, { compact: true }) + '</div>' +
+      '<h2 class="step-h"><span class="num">1</span>Главный формат</h2>' +
+      '<p class="hint-l">Займёт второй слот — основную часть вечера.</p>' +
       '<div class="choices">' + v.finalists.map(function (id) {
         var f = F(id);
-        return f ? choice('main', id, { format: f, title: esc(f.title) + (isLong(id) ? ' <span class="chip fin">на весь вечер</span>' : ''), sub: esc(f.tagline), chips: true, expandable: true, selected: S.sel2.main === id }) : '';
-      }).join('') + '</div></section>' +
-      bar('<button class="btn ghost" data-act="go" data-screen="intro" aria-label="Назад">←</button>', '',
-        '<button class="btn" data-act="go" data-screen="' + (isLong(S.sel2.main) ? 'review' : 'slot') + '"' + (S.sel2.main ? '' : ' disabled') + '>Дальше →</button>');
-  }
+        return f ? choice('main', id, { format: f, title: esc(f.title) + (isLong(id) ? ' <span class="chip fin">на весь вечер</span>' : ''), sub: esc(f.tagline), chips: true, expandable: true, selected: main === id }) : '';
+      }).join('') + '</div>';
 
-  function r2Slot() {
-    var v = S.view, sel = S.sel2, main = sel.main;
-    var opts = [
-      choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
-      choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, на разные подсказки', selected: sel.twice, purple: true })
-    ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
-      var f = F(id);
-      return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
-    }));
-    var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
-    var openOthers = others.some(function (f) { return f.id === sel.slot1; });
-    return '<section class="screen">' +
-      '<span class="kicker">Шаг 2 из 3 · по желанию</span><h1>Что играем в первом слоте?</h1>' +
-      '<p class="lead">До главного формата можно сыграть что-то ещё — или тот же формат второй раз.</p>' +
-      '<div class="choices">' + opts.join('') + '</div>' +
-      (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
-        others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + dur(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
-        '</div></details>' : '') +
-      '</section>' +
-      bar('<button class="btn ghost" data-act="go" data-screen="main" aria-label="Назад">←</button>', '',
-        '<button class="btn" data-act="go" data-screen="review">Дальше →</button>');
-  }
+    html += '<h2 class="step-h"><span class="num">2</span>Первый слот <span class="muted small">по желанию</span></h2>';
+    if (!main) {
+      html += '<p class="hint-l">Сначала выбери главный формат.</p>';
+    } else if (long) {
+      html += '<p class="hint-l">' + q(main) + ' идёт на весь вечер — первый слот не нужен.</p>';
+    } else {
+      var opts = [
+        choice('s1', '', { title: 'Без пожелания', sub: 'Пусть решат остальные', selected: !sel.twice && !sel.slot1, purple: true }),
+        choice('s1', '__twice', { title: q(main) + ' дважды', sub: 'Оба слота — один формат, на разные подсказки', selected: sel.twice, purple: true })
+      ].concat(v.finalists.filter(function (id) { return id !== main; }).map(function (id) {
+        var f = F(id);
+        return f ? choice('s1', id, { title: esc(f.title), sub: 'финалист · ' + dur(f), selected: !sel.twice && sel.slot1 === id, purple: true }) : '';
+      }));
+      var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0; });
+      var openOthers = others.some(function (f) { return f.id === sel.slot1; });
+      html += '<p class="hint-l">До главного формата можно сыграть что-то ещё — или тот же формат второй раз.</p>' +
+        '<div class="choices">' + opts.join('') + '</div>' +
+        (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
+          others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + dur(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
+          '</div></details>' : '');
+    }
+    html += '</section>';
 
-  function r2Review() {
-    var sel = S.sel2, long = isLong(sel.main);
-    return '<section class="screen">' +
-      '<span class="kicker">' + (long ? 'Шаг 2 из 2' : 'Шаг 3 из 3') + '</span><h1>Структура шоу</h1>' +
-      '<p class="lead">' + (long ? q(sel.main) + ' занимает весь вечер, поэтому первый слот не выбирается. ' : '') + 'Проверь и отправь. Голос можно будет поменять, пока раунд открыт.</p>' +
-      timeline(long ? '' : sel.twice ? sel.main : sel.slot1, sel.main) +
-      '</section>' +
-      bar('<button class="btn ghost" data-act="go" data-screen="' + (long ? 'main' : 'slot') + '" aria-label="Назад">←</button>', '',
-        '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
+    return html + bar('<button class="btn ghost" data-act="go" data-screen="intro" aria-label="Назад">←</button>',
+      main ? 'Голос можно поменять, пока раунд открыт' : 'Выбери <b>главный формат</b>',
+      '<button class="btn" data-act="vote2"' + (!main || S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
   }
 
   function r2Done() {
@@ -831,7 +827,7 @@
       case 'edit2': {
         var r = v.mine.r2;
         S.sel2 = { main: r.main, slot1: r.slot1 || '', twice: !!r.twice };
-        go('main'); break;
+        go('vote'); break;
       }
 
       /* управление */
