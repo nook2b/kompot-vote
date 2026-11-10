@@ -580,15 +580,15 @@
     }));
     // Формат «на весь вечер» в первый слот не помещается.
     var others = v.formats.filter(function (f) { return v.finalists.indexOf(f.id) < 0 && !isLong(f.id); });
-    var openOthers = others.some(function (f) { return f.id === sel.slot1; });
     return '<section class="screen">' +
       '<span class="kicker">Шаг 2 из 2 · по желанию</span><h1>Что играем в первом слоте?</h1>' +
       '<p class="lead">До главного формата можно сыграть что-то ещё — или его же второй раз. Голос отправляется один раз — поменять его потом не получится.</p>' +
       r2Timeline() +
       '<div class="choices">' + opts.join('') + '</div>' +
-      (others.length ? '<details class="fold"' + (openOthers ? ' open' : '') + '><summary>Другие форматы (' + others.length + ')</summary><div class="choices cols">' +
+      // Остальные форматы сразу развёрнуты: свёрнутый список оказался незаметным.
+      (others.length ? '<h3 class="list-h">Другие форматы</h3><div class="choices">' +
         others.map(function (f) { return choice('s1', f.id, { title: esc(f.title), sub: esc(f.type) + ' · ' + durFull(f), selected: !sel.twice && sel.slot1 === f.id, purple: true }); }).join('') +
-        '</div></details>' : '') +
+        '</div>' : '') +
       '</section>' +
       bar('<button class="btn ghost" data-act="go" data-screen="main" aria-label="Назад">←</button>', '',
         '<button class="btn" data-act="vote2"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? 'Отправляю…' : 'Отправить голос') + '</button>');
